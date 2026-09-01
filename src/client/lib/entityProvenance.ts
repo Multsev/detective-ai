@@ -6,6 +6,8 @@ export interface SourcePresentation {
   title: string;
   href?: string;
   kind: 'web' | 'file' | 'google';
+  publishedAt?: string;
+  dateLabel?: string;
 }
 
 export interface EntityProvenance {
@@ -43,16 +45,36 @@ export function getEntityProvenance(investigationCase: InvestigationCase, entity
 }
 
 export function presentSource(source: SourceReference): SourcePresentation {
-  if (source.kind === 'uploaded_file') return { id: source.id, label: `Файл: ${source.title}`, title: source.title, kind: 'file' };
-  if (source.kind === 'google_contact') return { id: source.id, label: 'Google Контакты', title: source.title, kind: 'google' };
+  const dateLabel = formatTemporalDate(source.publishedAt);
+  if (source.kind === 'uploaded_file') return { id: source.id, label: `Файл: ${source.title}`, title: source.title, kind: 'file', publishedAt: source.publishedAt || undefined, dateLabel };
+  if (source.kind === 'google_contact') return { id: source.id, label: 'Google Контакты', title: source.title, kind: 'google', publishedAt: source.publishedAt || undefined, dateLabel };
   const href = safeWebUrl(source.url);
   return {
     id: source.id,
     label: href ? displayHost(href) : source.publisher || source.title,
-    title: `${source.title}${source.publisher ? ` · ${source.publisher}` : ''}`,
+    title: `${source.title}${source.publisher ? ` · ${source.publisher}` : ''}${dateLabel ? ` · опубликовано ${dateLabel}` : ''}`,
     href,
     kind: 'web',
+    publishedAt: source.publishedAt || undefined,
+    dateLabel,
   };
+}
+
+export function formatTemporalDate(value?: string): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  if (normalized.includes('/')) {
+    const [from, to] = normalized.split('/', 2);
+    const formattedFrom = formatTemporalDate(from);
+    const formattedTo = formatTemporalDate(to);
+    return formattedFrom && formattedTo ? `${formattedFrom} — ${formattedTo}` : normalized;
+  }
+  const match = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(normalized);
+  if (!match) return normalized;
+  const [, year, month, day] = match;
+  if (day) return `${day}.${month}.${year}`;
+  if (month) return `${month}.${year}`;
+  return year;
 }
 
 function safeWebUrl(value: string): string | undefined {

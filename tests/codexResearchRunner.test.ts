@@ -62,6 +62,9 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('Анна Лебедева');
       expect(prompt).toContain('Фокусная карточка является отдельной ветвью');
       expect(prompt).toContain('sourceIds');
+      expect(prompt).toContain('occurredAt');
+      expect(prompt).toContain('publishedAt');
+      expect(prompt).toContain('Не подменяй дату события датой статьи');
       expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');
 
       const documentResult = await new CodexResearchRunner(executable, directory).investigate(

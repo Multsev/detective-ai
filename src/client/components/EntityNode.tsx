@@ -2,6 +2,7 @@ import { Building2, CalendarDays, CheckCircle2, CircleHelp, ContactRound, Extern
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { EntityResearchState, InvestigationEntity } from '../../shared/domain';
 import type { EntityProvenance } from '../lib/entityProvenance';
+import { formatTemporalDate } from '../lib/entityProvenance';
 
 export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; provenance: EntityProvenance }, 'entity'>;
 
@@ -30,6 +31,7 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const questions = entity.facts.filter((fact) => fact.kind === 'question').length;
+  const occurredAtLabel = formatTemporalDate(entity.occurredAt);
 
   return (
     <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}`}>
@@ -47,11 +49,13 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
         </div>
       </header>
       <p className="entity-card__summary">{entity.summary}</p>
+      {occurredAtLabel && <div className="entity-card__date" title="Дата объекта или события"><CalendarDays size={10} /><time dateTime={entity.occurredAt}>{occurredAtLabel}</time></div>}
       <div className={`entity-card__source entity-card__source--${provenance.primary.kind}`} title={provenance.primary.title}>
         {provenance.primary.kind === 'manual' ? <PenLine size={10} /> : provenance.primary.kind === 'google' ? <ContactRound size={10} /> : <FileText size={10} />}
         {'href' in provenance.primary && provenance.primary.href
           ? <a className="nodrag nopan" href={provenance.primary.href} target="_blank" rel="noreferrer" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{provenance.primary.label}<ExternalLink size={9} /></a>
           : <span>{provenance.primary.label}</span>}
+        {'dateLabel' in provenance.primary && provenance.primary.dateLabel && <time dateTime={provenance.primary.publishedAt}>{provenance.primary.dateLabel}</time>}
         {provenance.additionalCount > 0 && <small title={`Ещё источников: ${provenance.additionalCount}`}>+{provenance.additionalCount}</small>}
       </div>
       {research && <div className="entity-research-status" title={research.message}>

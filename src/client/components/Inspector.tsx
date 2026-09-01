@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, ContactRound, Crosshair, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Bot, CalendarDays, ContactRound, Crosshair, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
 import { IconButton, Select } from '@operator-ui/framework';
 import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
-import { presentSource, type EntityProvenance } from '../lib/entityProvenance';
+import { formatTemporalDate, presentSource, type EntityProvenance } from '../lib/entityProvenance';
 
 interface InspectorProps {
   entity?: InvestigationEntity;
@@ -43,12 +43,14 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
     const visual = evidenceStyles[relation.status];
     const from = allEntities.find((item) => item.id === relation.sourceId);
     const to = allEntities.find((item) => item.id === relation.targetId);
+    const relationDate = formatTemporalDate(relation.occurredAt);
     return (
       <aside className="inspector">
         <IconButton icon="error" label="Закрыть инспектор" className="inspector-close" onClick={onClose} />
         <span className="inspector__eyebrow">Выбранная связь</span>
         <h2>{relation.label}</h2>
         <p className="relation-direction">{from?.title ?? relation.sourceId} <span>→</span> {to?.title ?? relation.targetId}</p>
+        {relationDate && <div className="inspector-object-date"><CalendarDays size={12} /><span>Дата связи</span><time dateTime={relation.occurredAt}>{relationDate}</time></div>}
         <div className="confidence-card">
           <div><i style={{ background: visual.color }} /><span>{visual.label}</span></div>
           <strong>{Math.round(relation.confidence * 100)}%</strong>
@@ -62,7 +64,7 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
             if (!source) return null;
             return source.kind === 'uploaded_file' || source.kind === 'google_contact'
               ? <div className="source-link source-link--file" key={id}><span>{source.kind === 'google_contact' ? <ContactRound size={13} /> : <FileText size={13} />}{source.title}</span><small>{source.kind === 'google_contact' ? 'личный контакт' : 'загруженный файл'}</small></div>
-              : <a className="source-link" href={source.url} target="_blank" rel="noreferrer" key={id}>{source.title}<ArrowUpRight size={13} /></a>;
+              : <a className="source-link" href={source.url} target="_blank" rel="noreferrer" key={id}><span>{source.title}</span>{source.publishedAt && <small>{formatTemporalDate(source.publishedAt)}</small>}<ArrowUpRight size={13} /></a>;
           })}
         </section>
       </aside>
@@ -80,6 +82,7 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
   }
 
   const relatedEntities = allEntities.filter((item) => item.id !== entity.id);
+  const entityDate = formatTemporalDate(entity.occurredAt);
 
   function submitEntry() {
     const text = entryText.trim();
@@ -95,11 +98,12 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
       <h2>{entity.title}</h2>
       <p className="inspector__subtitle">{entity.subtitle}</p>
       <p className="body-copy">{entity.summary}</p>
+      {entityDate && <div className="inspector-object-date"><CalendarDays size={12} /><span>Дата объекта</span><time dateTime={entity.occurredAt}>{entityDate}</time></div>}
       {provenance && <div className="inspector-entity-sources" aria-label="Источники карточки">
         <strong>Источник</strong>
         {provenance.sources.length > 0 ? provenance.sources.map((source) => source.href
-          ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}<ArrowUpRight size={9} /></a>
-          : <span title={source.title} key={source.id}>{source.label}</span>)
+          ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}<ArrowUpRight size={9} /></a>
+          : <span title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}</span>)
           : <span title={provenance.primary.title}>{provenance.primary.label}</span>}
       </div>}
 
@@ -144,8 +148,8 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
                 <small>{evidenceStyles[fact.status].label} · {Math.round(fact.confidence * 100)}%</small>
                 <div className="fact-sources">
                   {factSources.map((source) => source.href
-                    ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}<ArrowUpRight size={9} /></a>
-                    : <span title={source.title} key={source.id}>{source.label}</span>)}
+                    ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}<ArrowUpRight size={9} /></a>
+                    : <span title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}</span>)}
                   {factSources.length === 0 && <span>{fact.createdBy === 'user' ? 'Вручную' : 'Источник не указан'}</span>}
                 </div>
               </div>

@@ -19,6 +19,7 @@ export const researchResultSchema = z.object({
     title: z.string().min(1),
     subtitle: z.string(),
     summary: z.string(),
+    occurredAt: z.string(),
   })),
   claims: z.array(z.object({
     id: z.string().min(1),
@@ -29,6 +30,7 @@ export const researchResultSchema = z.object({
     confidence: z.number().min(0).max(1),
     explanation: z.string(),
     sourceIds: z.array(z.string()),
+    occurredAt: z.string(),
   })),
   questions: z.array(z.object({
     text: z.string(),
@@ -51,13 +53,14 @@ export const researchJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'type', 'title', 'subtitle', 'summary'],
+        required: ['id', 'type', 'title', 'subtitle', 'summary', 'occurredAt'],
         properties: {
           id: { type: 'string' },
           type: { type: 'string', enum: entityTypes },
           title: { type: 'string' },
           subtitle: { type: 'string' },
           summary: { type: 'string' },
+          occurredAt: { type: 'string' },
         },
       },
     },
@@ -66,7 +69,7 @@ export const researchJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'subjectId', 'predicate', 'objectId', 'status', 'confidence', 'explanation', 'sourceIds'],
+        required: ['id', 'subjectId', 'predicate', 'objectId', 'status', 'confidence', 'explanation', 'sourceIds', 'occurredAt'],
         properties: {
           id: { type: 'string' },
           subjectId: { type: 'string' },
@@ -76,6 +79,7 @@ export const researchJsonSchema = {
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           explanation: { type: 'string' },
           sourceIds: { type: 'array', items: { type: 'string' } },
+          occurredAt: { type: 'string' },
         },
       },
     },

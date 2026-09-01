@@ -38,6 +38,7 @@ export function mergeResearchResult(
         .filter((claim) => claim.subjectId === entity.id || claim.objectId === entity.id)
         .flatMap((claim) => claim.sourceIds))],
       createdBy: 'ai',
+      occurredAt: entity.occurredAt || undefined,
     }));
 
   const existingRelationIds = new Set(investigationCase.relations.map((relation) => relation.id));
@@ -53,6 +54,7 @@ export function mergeResearchResult(
       confidence: claim.confidence,
       sourceIds: claim.sourceIds,
       createdBy: 'ai',
+      occurredAt: claim.occurredAt || undefined,
     }));
 
   const existingSourceIds = new Set(investigationCase.sources.map((source) => source.id));

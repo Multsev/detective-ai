@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getEntityProvenance, presentSource } from '../src/client/lib/entityProvenance.js';
+import { formatTemporalDate, getEntityProvenance, presentSource } from '../src/client/lib/entityProvenance.js';
 import { createSeedCase } from '../src/shared/seed.js';
 
 describe('entity provenance', () => {
@@ -22,5 +22,13 @@ describe('entity provenance', () => {
   it('never turns private or file protocols into clickable links', () => {
     expect(presentSource({ id: 'g', title: 'Контакт', url: 'google-contact://people/1', publisher: 'Google', publishedAt: '', accessedAt: '', kind: 'google_contact' }).href).toBeUndefined();
     expect(presentSource({ id: 'f', title: 'report.md', url: 'case-file://hash/report.md', publisher: 'Файл', publishedAt: '', accessedAt: '', kind: 'uploaded_file' }).href).toBeUndefined();
+  });
+
+  it('formats precise, partial, and ranged dates without inventing precision', () => {
+    expect(formatTemporalDate('2026-08-28')).toBe('28.08.2026');
+    expect(formatTemporalDate('2026-08')).toBe('08.2026');
+    expect(formatTemporalDate('2026')).toBe('2026');
+    expect(formatTemporalDate('2024-01/2024-03')).toBe('01.2024 — 03.2024');
+    expect(formatTemporalDate('')).toBeUndefined();
   });
 });

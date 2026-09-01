@@ -81,6 +81,7 @@ export interface InvestigationEntity {
   facts: CaseFact[];
   sourceIds?: string[];
   createdBy?: 'user' | 'ai';
+  occurredAt?: string;
 }
 
 export interface InvestigationRelation {
@@ -93,6 +94,7 @@ export interface InvestigationRelation {
   confidence: number;
   sourceIds: string[];
   createdBy: 'user' | 'ai';
+  occurredAt?: string;
 }
 
 export interface InvestigationCase {
@@ -130,6 +132,7 @@ export interface ResearchCandidateEntity {
   title: string;
   subtitle: string;
   summary: string;
+  occurredAt: string;
 }
 
 export interface ResearchClaim {
@@ -141,6 +144,7 @@ export interface ResearchClaim {
   confidence: number;
   explanation: string;
   sourceIds: string[];
+  occurredAt: string;
 }
 
 export interface ResearchQuestion {
