@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bot, X } from 'lucide-react';
-import { IconButton, Panel } from '@operator-ui/framework';
+import { IconButton, Panel } from '../ui';
 import type { CodexStatus, EntityResearchState, InvestigationEntity } from '../../shared/domain';
 import { getCodexIndicatorState } from '../lib/codexIndicator';
 

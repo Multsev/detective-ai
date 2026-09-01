@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, ExternalLink, PlugZap, RefreshCw, Save, ShieldAlert, X } from 'lucide-react';
-import { Button, InlineStatus } from '@operator-ui/framework';
+import { Button, InlineStatus } from '../ui';
 import type { McpServerSetting, McpSettingsView } from '../../shared/domain';
 import { api } from '../lib/api';
 import { SettingsSection } from './SettingsSection';

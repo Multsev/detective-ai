@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Button, Checkbox, Dialog, PlainTextEditor, SelectionModel } from '@operator-ui/framework';
+import { Button, Checkbox, Dialog, PlainTextEditor, SelectionModel } from '../ui';
 import type { InvestigationEntity } from '../../shared/domain';
 
 interface FindRelationshipsDialogProps {

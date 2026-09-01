@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Dialog, TextField } from '@operator-ui/framework';
+import { Button, Dialog, TextField } from '../ui';
 
 export function RenameCaseDialog({ open, title, onClose, onRename }: { open: boolean; title: string; onClose: () => void; onRename: (title: string) => void }) {
   const [draft, setDraft] = useState(title);

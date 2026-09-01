@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
-import { Button, Checkbox, IconButton, Panel } from '@operator-ui/framework';
+import { Button, Checkbox, IconButton, Panel } from '../ui';
 import { entityTypes, evidenceStatuses, type EntityType, type EvidenceStatus, type InvestigationCase } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 

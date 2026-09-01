@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ContactRound, ExternalLink, Focus, RefreshCw, Terminal, Unplug, X } from 'lucide-react';
-import { Button, Checkbox, frameworkPersistence, InlineStatus } from '@operator-ui/framework';
+import { Button, Checkbox, appPersistence, InlineStatus } from '../ui';
 import type { GoogleIntegrationStatus, HealthStatus } from '../../shared/domain';
 import { McpSettingsSection } from './McpSettingsSection';
 import { SettingsSection } from './SettingsSection';
@@ -26,13 +26,13 @@ type OpenSections = Record<SettingsSectionId, boolean>;
 
 export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, autoOpenInspector, onAutoOpenInspectorChange, autoSave, onAutoSaveChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
   const { codex } = health;
-  const [openSections, setOpenSections] = useState<OpenSections>(() => frameworkPersistence.get<OpenSections>('detective:settings-sections', { codex: !codex.ready, board: false, google: false, mcp: false }, isOpenSections));
+  const [openSections, setOpenSections] = useState<OpenSections>(() => appPersistence.get<OpenSections>('detective:settings-sections', { codex: !codex.ready, board: false, google: false, mcp: false }, isOpenSections));
 
   function setSectionOpen(id: SettingsSectionId, open: boolean) {
     setOpenSections((current) => {
       if (current[id] === open) return current;
       const next = { ...current, [id]: open };
-      frameworkPersistence.set('detective:settings-sections', next);
+      appPersistence.set('detective:settings-sections', next);
       return next;
     });
   }

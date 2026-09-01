@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Dialog, PlainTextEditor, TextField } from '@operator-ui/framework';
+import { Button, Dialog, PlainTextEditor, TextField } from '../ui';
 import type { InvestigationEntity } from '../../shared/domain';
 
 export function ManualLinkDialog({ open, source, targets, onClose, onCreate }: { open: boolean; source?: InvestigationEntity; targets: InvestigationEntity[]; onClose: () => void; onCreate: (label: string, explanation: string) => void }) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, DataView, Dialog, EmptyState, InlineStatus, LoadingState, SelectionModel, TextField, type DataViewColumn } from '@operator-ui/framework';
+import { Button, DataView, Dialog, EmptyState, InlineStatus, LoadingState, SelectionModel, TextField, type DataViewColumn } from '../ui';
 import type { GoogleContact } from '../../shared/domain';
 import { api } from '../lib/api';
 

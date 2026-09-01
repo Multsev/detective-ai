@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link2, Search } from 'lucide-react';
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Menu, MenuBar, SelectionModel, type MenuEntry } from '@operator-ui/framework';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator, appPersistence, IconButton, Menu, MenuBar, SelectionModel, type MenuEntry } from './ui';
 import type {
   CaseSummary,
   CreateCaseInput,
@@ -61,9 +61,9 @@ export function App() {
   const [onlySubjectNetwork, setOnlySubjectNetwork] = useState(false);
   const [search, setSearch] = useState('');
   const [searchVisible, setSearchVisible] = useState(false);
-  const [autoFitResearch, setAutoFitResearch] = useState(() => frameworkPersistence.get<boolean>('detective:auto-fit-research', true, (value): value is boolean => typeof value === 'boolean'));
-  const [autoOpenInspector, setAutoOpenInspector] = useState(() => frameworkPersistence.get<boolean>('detective:auto-open-inspector', false, (value): value is boolean => typeof value === 'boolean'));
-  const [autoSave, setAutoSave] = useState(() => frameworkPersistence.get<boolean>('detective:auto-save', true, (value): value is boolean => typeof value === 'boolean'));
+  const [autoFitResearch, setAutoFitResearch] = useState(() => appPersistence.get<boolean>('detective:auto-fit-research', true, (value): value is boolean => typeof value === 'boolean'));
+  const [autoOpenInspector, setAutoOpenInspector] = useState(() => appPersistence.get<boolean>('detective:auto-open-inspector', false, (value): value is boolean => typeof value === 'boolean'));
+  const [autoSave, setAutoSave] = useState(() => appPersistence.get<boolean>('detective:auto-save', true, (value): value is boolean => typeof value === 'boolean'));
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
   const [showGoogleContacts, setShowGoogleContacts] = useState(false);
@@ -96,11 +96,11 @@ export function App() {
   const runningEntityIds = useMemo(() => new Set(Object.values(researchByEntityId).filter((research) => research.status === 'running').map((research) => research.entityId)), [researchByEntityId]);
 
   useEffect(() => {
-    frameworkPersistence.set('detective:auto-fit-research', autoFitResearch);
+    appPersistence.set('detective:auto-fit-research', autoFitResearch);
   }, [autoFitResearch]);
 
-  useEffect(() => { frameworkPersistence.set('detective:auto-open-inspector', autoOpenInspector); }, [autoOpenInspector]);
-  useEffect(() => { frameworkPersistence.set('detective:auto-save', autoSave); }, [autoSave]);
+  useEffect(() => { appPersistence.set('detective:auto-open-inspector', autoOpenInspector); }, [autoOpenInspector]);
+  useEffect(() => { appPersistence.set('detective:auto-save', autoSave); }, [autoSave]);
 
   useEffect(() => {
     investigationCaseRef.current = investigationCase;

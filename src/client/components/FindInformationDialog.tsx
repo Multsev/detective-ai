@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileText, FileUp, Globe2 } from 'lucide-react';
-import { Button, Dialog, Select } from '@operator-ui/framework';
+import { Button, Dialog, Select } from '../ui';
 import type { InvestigationEntity } from '../../shared/domain';
 
 interface FindInformationDialogProps {

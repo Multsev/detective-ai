@@ -1,4 +1,4 @@
-import { Button, Dialog } from '@operator-ui/framework';
+import { Button, Dialog } from '../ui';
 
 interface DeleteEntityDialogProps {
   entityTitle?: string;

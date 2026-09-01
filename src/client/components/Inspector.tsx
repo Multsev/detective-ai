@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, ContactRound, FileText, IdCard, Search } from 'lucide-react';
-import { Button, IconButton, PlainTextEditor, Select, TextField } from '@operator-ui/framework';
+import { Button, IconButton, PlainTextEditor, Select, TextField } from '../ui';
 import type { EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
 import { evidenceStyles } from '../../shared/evidenceStyle';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dialog, FormRow, Select, TextField } from '@operator-ui/framework';
+import { Button, Dialog, FormRow, Select, TextField } from '../ui';
 import type { CreateCaseInput } from '../../shared/domain';
 
 interface CreateCaseDialogProps {
@@ -22,7 +22,7 @@ export function CreateCaseDialog({ open, nextCaseNumber, onClose, onCreate }: Cr
 
   return (
     <Dialog open={open} title="Новое дело" onClose={onClose}>
-      <form className="ou-dialog-form create-case-form" onSubmit={submit}>
+      <form className="detective-dialog-form create-case-form" onSubmit={submit}>
         <FormRow label="Объект" required hint="Фамилия и имя человека либо название компании">
           <TextField value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Иван Морозов" />
         </FormRow>
