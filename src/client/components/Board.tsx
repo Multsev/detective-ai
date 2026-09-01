@@ -22,6 +22,7 @@ import { buildEntityProvenanceIndex } from '../lib/entityProvenance';
 import { getGraphBounds, isDenseGraph, reconcileFlowNodes, shouldReduceGraphDetail } from '../lib/graphPerformance';
 import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
+import { motionDuration, motionDurations, type MotionLevel } from '../motion/motionPreferences';
 
 const nodeTypes = { entity: EntityNode };
 
@@ -34,10 +35,14 @@ interface BoardProps {
   onlySubjectNetwork: boolean;
   search: string;
   researchByEntityId: Readonly<Record<string, EntityResearchState>>;
+  entityMotionById: Readonly<Record<string, 'updated' | 'no-change' | 'error'>>;
+  removingEntityIds: ReadonlySet<string>;
   autoFitResearch: boolean;
+  motionLevel: MotionLevel;
   researching: boolean;
   revealEntityRequest?: { entityId: string; key: number };
   fitGraphRequestKey?: number;
+  layoutAnimationKey?: number;
   onSelectEntity: (entityId: string, additive: boolean) => void;
   onClearSelection: () => void;
   onOpenEntity: (entityId: string) => void;
@@ -49,13 +54,45 @@ interface BoardProps {
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, onlySubjectNetwork, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, onlySubjectNetwork, search, researchByEntityId, entityMotionById, removingEntityIds, autoFitResearch, motionLevel, researching, revealEntityRequest, fitGraphRequestKey, layoutAnimationKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const [viewportZoom, setViewportZoom] = useState(1);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [layoutAnimating, setLayoutAnimating] = useState(false);
+  const [enteringEntityIds, setEnteringEntityIds] = useState<Set<string>>(() => new Set());
+  const [enteringRelationIds, setEnteringRelationIds] = useState<Set<string>>(() => new Set());
+  const previousEntityIds = useRef(new Set(investigationCase.entities.map((entity) => entity.id)));
+  const previousRelationIds = useRef(new Set(investigationCase.relations.map((relation) => relation.id)));
   const denseGraph = isDenseGraph(investigationCase.entities.length, investigationCase.relations.length);
   const reducedDetail = shouldReduceGraphDetail(investigationCase.entities.length, investigationCase.relations.length, viewportZoom);
+
+  useEffect(() => {
+    const current = new Set(investigationCase.entities.map((entity) => entity.id));
+    const entering = new Set([...current].filter((id) => !previousEntityIds.current.has(id)));
+    previousEntityIds.current = current;
+    if (entering.size === 0 || denseGraph || motionLevel === 'off') return undefined;
+    setEnteringEntityIds(entering);
+    const timer = setTimeout(() => setEnteringEntityIds(new Set()), motionDuration(motionLevel, motionDurations.card) + 80);
+    return () => clearTimeout(timer);
+  }, [denseGraph, investigationCase.entities, motionLevel]);
+
+  useEffect(() => {
+    const current = new Set(investigationCase.relations.map((relation) => relation.id));
+    const entering = new Set([...current].filter((id) => !previousRelationIds.current.has(id)));
+    previousRelationIds.current = current;
+    if (entering.size === 0 || denseGraph || motionLevel === 'off') return undefined;
+    setEnteringRelationIds(entering);
+    const timer = setTimeout(() => setEnteringRelationIds(new Set()), motionDuration(motionLevel, motionDurations.relation) + 80);
+    return () => clearTimeout(timer);
+  }, [denseGraph, investigationCase.relations, motionLevel]);
+
+  useEffect(() => {
+    if (layoutAnimationKey === undefined || denseGraph || motionLevel === 'off') return undefined;
+    setLayoutAnimating(true);
+    const timer = setTimeout(() => setLayoutAnimating(false), motionDuration(motionLevel, motionDurations.layout) + 80);
+    return () => clearTimeout(timer);
+  }, [denseGraph, layoutAnimationKey, motionLevel]);
   const provenanceByEntityId = useMemo(() => buildEntityProvenanceIndex(investigationCase), [investigationCase.entities, investigationCase.relations, investigationCase.sources]);
   const subjectNetworkIds = useMemo(() => {
     if (!onlySubjectNetwork) return undefined;
@@ -70,10 +107,10 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, isActiveSelection: entity.id === activeEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail },
+    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, isActiveSelection: entity.id === activeEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail, entering: enteringEntityIds.has(entity.id), removing: removingEntityIds.has(entity.id), motionState: entityMotionById[entity.id] },
     selected: selectedEntityIds.has(entity.id),
     hidden: !isEntityVisible(entity, visibleTypes, search) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)),
-  })), [activeEntityId, investigationCase.entities, provenanceByEntityId, reducedDetail, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, visibleTypes]);
+  })), [activeEntityId, enteringEntityIds, entityMotionById, investigationCase.entities, provenanceByEntityId, reducedDetail, removingEntityIds, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];
@@ -84,6 +121,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
       label: reducedDetail ? undefined : `${relation.label} · ${Math.round(relation.confidence * 100)}%`,
       type: 'default',
       animated: !denseGraph && relation.status === 'hypothesis',
+      className: `${enteringRelationIds.has(relation.id) ? 'relation-motion-entering ' : ''}${removingEntityIds.has(relation.sourceId) || removingEntityIds.has(relation.targetId) ? 'relation-motion-removing' : ''}`.trim(),
       style: { stroke: visual.color, strokeWidth: visual.width, strokeDasharray: visual.dash },
       labelStyle: { fill: '#25303a', fontWeight: 750, fontSize: 11 },
       labelBgStyle: { fill: '#efe1c7', fillOpacity: 0.95 },
@@ -92,7 +130,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
       data: { relation },
       hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))),
     };
-  }), [denseGraph, investigationCase.relations, reducedDetail, subjectNetworkIds, visibleEvidenceStatuses]);
+  }), [denseGraph, enteringRelationIds, investigationCase.relations, reducedDetail, removingEntityIds, subjectNetworkIds, visibleEvidenceStatuses]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityFlowNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
@@ -103,7 +141,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
   const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (event, node) => onSelectEntity(node.id, event.shiftKey || event.ctrlKey || event.metaKey);
 
   return (
-    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`} onDoubleClick={(event) => { if ((event.target as HTMLElement).classList.contains('react-flow__pane')) onOpenAddEntity(); }}>
+    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${layoutAnimating ? ' is-layout-animating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`} onDoubleClick={(event) => { if ((event.target as HTMLElement).classList.contains('react-flow__pane')) onOpenAddEntity(); }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -146,11 +184,12 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
           entityCount={investigationCase.entities.length}
           relationCount={investigationCase.relations.length}
           researching={researching}
+          motionLevel={motionLevel}
         />
-        <RevealEntity request={revealEntityRequest} />
-        <FitGraphOnRequest nodes={nodes} boardRef={boardRef} requestKey={fitGraphRequestKey} />
+        <RevealEntity request={revealEntityRequest} motionLevel={motionLevel} />
+        <FitGraphOnRequest nodes={nodes} boardRef={boardRef} requestKey={fitGraphRequestKey} motionLevel={motionLevel} />
         <Background variant={BackgroundVariant.Dots} gap={16} size={1.4} color="rgba(84,55,31,.28)" />
-        <GraphControls nodes={nodes} boardRef={boardRef} />
+        <GraphControls nodes={nodes} boardRef={boardRef} motionLevel={motionLevel} />
       </ReactFlow>
       {nodes.filter((node) => !node.hidden).length === 0 && (
         <div className="empty-board">На доске нет карточек, подходящих под фильтр.</div>
@@ -159,21 +198,21 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
   );
 }
 
-function FitGraphOnRequest({ nodes, boardRef, requestKey }: { nodes: EntityFlowNode[]; boardRef: RefObject<HTMLDivElement | null>; requestKey?: number }) {
+function FitGraphOnRequest({ nodes, boardRef, requestKey, motionLevel }: { nodes: EntityFlowNode[]; boardRef: RefObject<HTMLDivElement | null>; requestKey?: number; motionLevel: MotionLevel }) {
   const fitEntireGraph = useFitEntireGraph(nodes, boardRef);
 
   useEffect(() => {
     if (requestKey === undefined) return undefined;
     const animationFrame = requestAnimationFrame(() => {
-      void fitEntireGraph(420);
+      void fitEntireGraph(motionDuration(motionLevel, 420));
     });
     return () => cancelAnimationFrame(animationFrame);
-  }, [fitEntireGraph, requestKey]);
+  }, [fitEntireGraph, motionLevel, requestKey]);
 
   return null;
 }
 
-function RevealEntity({ request }: { request?: { entityId: string; key: number } }) {
+function RevealEntity({ request, motionLevel }: { request?: { entityId: string; key: number }; motionLevel: MotionLevel }) {
   const { fitView, getNode } = useReactFlow<EntityFlowNode>();
   const nodesInitialized = useNodesInitialized();
 
@@ -181,21 +220,22 @@ function RevealEntity({ request }: { request?: { entityId: string; key: number }
     if (!request || !nodesInitialized) return undefined;
     const animationFrame = requestAnimationFrame(() => {
       const node = getNode(request.entityId);
-      if (node) void fitView({ nodes: [node], padding: 0.8, duration: 320, maxZoom: 1.05 });
+      if (node) void fitView({ nodes: [node], padding: 0.8, duration: motionDuration(motionLevel, 320), maxZoom: 1.05 });
     });
     return () => cancelAnimationFrame(animationFrame);
-  }, [fitView, getNode, nodesInitialized, request]);
+  }, [fitView, getNode, motionLevel, nodesInitialized, request]);
 
   return null;
 }
 
-function ResearchAutoFit({ nodes, boardRef, enabled, entityCount, relationCount, researching }: {
+function ResearchAutoFit({ nodes, boardRef, enabled, entityCount, relationCount, researching, motionLevel }: {
   nodes: EntityFlowNode[];
   boardRef: RefObject<HTMLDivElement | null>;
   enabled: boolean;
   entityCount: number;
   relationCount: number;
   researching: boolean;
+  motionLevel: MotionLevel;
 }) {
   const fitEntireGraph = useFitEntireGraph(nodes, boardRef);
   const previous = useRef<ResearchAutoFitState>({ entityCount, relationCount, researching });
@@ -207,17 +247,17 @@ function ResearchAutoFit({ nodes, boardRef, enabled, entityCount, relationCount,
     if (!shouldFit) return undefined;
 
     const animationFrame = requestAnimationFrame(() => {
-      void fitEntireGraph(360);
+      void fitEntireGraph(motionDuration(motionLevel, motionDurations.camera));
     });
     return () => cancelAnimationFrame(animationFrame);
-  }, [enabled, entityCount, fitEntireGraph, relationCount, researching]);
+  }, [enabled, entityCount, fitEntireGraph, motionLevel, relationCount, researching]);
 
   return null;
 }
 
-function GraphControls({ nodes, boardRef }: { nodes: EntityFlowNode[]; boardRef: RefObject<HTMLDivElement | null> }) {
+function GraphControls({ nodes, boardRef, motionLevel }: { nodes: EntityFlowNode[]; boardRef: RefObject<HTMLDivElement | null>; motionLevel: MotionLevel }) {
   const fitEntireGraph = useFitEntireGraph(nodes, boardRef);
-  return <Controls showInteractive={false} onFitView={() => void fitEntireGraph(280)} />;
+  return <Controls showInteractive={false} onFitView={() => void fitEntireGraph(motionDuration(motionLevel, 280))} />;
 }
 
 function useFitEntireGraph(nodes: EntityFlowNode[], boardRef: RefObject<HTMLDivElement | null>) {

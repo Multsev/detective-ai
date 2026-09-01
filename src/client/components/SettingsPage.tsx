@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ContactRound, ExternalLink, Focus, RefreshCw, Terminal, Unplug, X } from 'lucide-react';
-import { Button, Checkbox, appPersistence, InlineStatus } from '../ui';
+import { Button, Checkbox, appPersistence, InlineStatus, Select } from '../ui';
 import type { GoogleIntegrationStatus, HealthStatus } from '../../shared/domain';
+import type { MotionLevel } from '../motion/motionPreferences';
 import { McpSettingsSection } from './McpSettingsSection';
 import { SettingsSection } from './SettingsSection';
 
@@ -14,6 +15,8 @@ interface SettingsPageProps {
   onAutoOpenInspectorChange: (enabled: boolean) => void;
   autoSave: boolean;
   onAutoSaveChange: (enabled: boolean) => void;
+  motionLevel: MotionLevel;
+  onMotionLevelChange: (level: MotionLevel) => void;
   googleStatus: GoogleIntegrationStatus;
   disconnectingGoogle: boolean;
   onDisconnectGoogle: () => void;
@@ -24,7 +27,7 @@ interface SettingsPageProps {
 type SettingsSectionId = 'codex' | 'board' | 'google' | 'mcp';
 type OpenSections = Record<SettingsSectionId, boolean>;
 
-export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, autoOpenInspector, onAutoOpenInspectorChange, autoSave, onAutoSaveChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
+export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, autoOpenInspector, onAutoOpenInspectorChange, autoSave, onAutoSaveChange, motionLevel, onMotionLevelChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
   const { codex } = health;
   const [openSections, setOpenSections] = useState<OpenSections>(() => appPersistence.get<OpenSections>('detective:settings-sections', { codex: !codex.ready, board: false, google: false, mcp: false }, isOpenSections));
 
@@ -51,7 +54,8 @@ export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitRes
         <div className="settings-section__actions"><Button disabled={refreshing} onClick={onRefresh}><RefreshCw size={12} className={refreshing ? 'spin' : ''} />{refreshing ? 'Проверяем…' : 'Проверить снова'}</Button></div>
       </SettingsSection>
 
-      <SettingsSection title="Поведение доски" description="Автоматизация интерфейса" icon={<Focus size={15} />} status={<InlineStatus tone="info">3 параметра</InlineStatus>} open={openSections.board} onToggle={(open) => setSectionOpen('board', open)}>
+      <SettingsSection title="Поведение доски" description="Автоматизация интерфейса и движение" icon={<Focus size={15} />} status={<InlineStatus tone="info">4 параметра</InlineStatus>} open={openSections.board} onToggle={(open) => setSectionOpen('board', open)}>
+        <div className="motion-preference"><label htmlFor="motion-level">Анимации</label><Select id="motion-level" value={motionLevel} onChange={(event) => onMotionLevelChange(event.target.value as MotionLevel)}><option value="full">Полные</option><option value="reduced">Сокращённые</option><option value="off">Выключены</option></Select><small>Сокращённый режим уменьшает перемещения и длительность эффектов.</small></div>
         <div className="compact-choice-list"><Checkbox checked={autoFitResearch} onChange={(event) => onAutoFitResearchChange(event.target.checked)} label="Автоматически вписывать новые связи" /><Checkbox checked={autoOpenInspector} onChange={(event) => onAutoOpenInspectorChange(event.target.checked)} label="Открывать инспектор при выборе карточки" /><Checkbox checked={autoSave} onChange={(event) => onAutoSaveChange(event.target.checked)} label="Автоматически сохранять изменения" /></div>
       </SettingsSection>
 

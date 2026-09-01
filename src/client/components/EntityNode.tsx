@@ -1,11 +1,11 @@
-import { Building2, CalendarDays, CheckCircle2, CircleHelp, ContactRound, ExternalLink, FileText, LoaderCircle, MapPin, NotebookPen, PenLine, TriangleAlert, UserRound } from 'lucide-react';
+import { Building2, CalendarDays, CheckCircle2, CircleHelp, ContactRound, ExternalLink, FileText, LoaderCircle, MapPin, MinusCircle, NotebookPen, PenLine, TriangleAlert, UserRound } from 'lucide-react';
 import { memo } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { EntityResearchState, InvestigationEntity } from '../../shared/domain';
 import type { EntityProvenance } from '../lib/entityProvenance';
 import { formatTemporalDate } from '../lib/entityProvenance';
 
-export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; isActiveSelection: boolean; provenance: EntityProvenance; reducedDetail: boolean }, 'entity'>;
+export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; isActiveSelection: boolean; provenance: EntityProvenance; reducedDetail: boolean; entering: boolean; removing: boolean; motionState?: 'updated' | 'no-change' | 'error' }, 'entity'>;
 
 const iconByType = {
   person: UserRound,
@@ -28,14 +28,14 @@ const labelByType = {
 };
 
 function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
-  const { entity, research, isResearchSubject, isActiveSelection, provenance, reducedDetail } = data;
+  const { entity, research, isResearchSubject, isActiveSelection, provenance, reducedDetail, entering, removing, motionState } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const occurredAtLabel = formatTemporalDate(entity.occurredAt);
   const primaryAttributes = (entity.attributes ?? []).slice(0, 2);
 
   return (
-    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isActiveSelection ? ' is-active-selection' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
+    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isActiveSelection ? ' is-active-selection' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}${entering ? ' is-entering' : ''}${removing ? ' is-removing' : ''}${motionState ? ` motion-${motionState}` : ''}`}>
       <Handle type="target" position={Position.Left} className="entity-handle" title="Отпустите здесь, чтобы связать карточки" aria-label="Вход связи" />
       <span className="pushpin" />
       {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}
@@ -62,9 +62,10 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
         {'dateLabel' in provenance.primary && provenance.primary.dateLabel && <time dateTime={provenance.primary.publishedAt}>{provenance.primary.dateLabel}</time>}
         {provenance.additionalCount > 0 && <small title={`Ещё источников: ${provenance.additionalCount}`}>+{provenance.additionalCount}</small>}
       </div>}
-      {research && <div className="entity-research-status" title={research.message}>
+      {motionState && <div className={`entity-motion-feedback is-${motionState}`} role="status">{motionState === 'updated' ? <CheckCircle2 size={11} /> : motionState === 'no-change' ? <MinusCircle size={11} /> : <TriangleAlert size={11} />}<span>{motionState === 'updated' ? 'Карточка дополнена' : motionState === 'no-change' ? 'Новых данных нет' : 'Ошибка исследования'}</span></div>}
+      {research && <div className="entity-research-status" title={research.message} data-stage={research.stage}>
         {research.status === 'running' ? <LoaderCircle size={12} className="spin" /> : research.status === 'completed' ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
-        <div><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Codex ищет связи' : 'Codex ищет информацию') : research.status === 'completed' ? (research.mode === 'relationships' ? 'Связи проверены' : 'Информация обновлена') : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
+        <div key={`${research.status}:${research.stage}`}><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Codex ищет связи' : 'Codex ищет информацию') : research.status === 'completed' ? (research.mode === 'relationships' ? 'Связи проверены' : 'Информация обновлена') : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
       </div>}
       <Handle type="source" position={Position.Right} className="entity-handle" title="Потяните к другой карточке, чтобы создать связь" aria-label="Создать связь" />
     </article>

@@ -38,8 +38,10 @@ import { ManualLinkDialog } from './components/ManualLinkDialog';
 import { RenameCaseDialog } from './components/RenameCaseDialog';
 import { ResearchQueueControl } from './components/ResearchQueueControl';
 import { downloadCaseFile, parseCaseFile } from './lib/caseFile';
+import { getDefaultMotionLevel, isMotionLevel, motionDuration, motionDurations, type MotionLevel } from './motion/motionPreferences';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+type EntityMotionState = 'updated' | 'no-change' | 'error';
 
 export function App() {
   const [investigationCase, setInvestigationCase] = useState<InvestigationCase>();
@@ -64,6 +66,7 @@ export function App() {
   const [autoFitResearch, setAutoFitResearch] = useState(() => appPersistence.get<boolean>('detective:auto-fit-research', true, (value): value is boolean => typeof value === 'boolean'));
   const [autoOpenInspector, setAutoOpenInspector] = useState(() => appPersistence.get<boolean>('detective:auto-open-inspector', false, (value): value is boolean => typeof value === 'boolean'));
   const [autoSave, setAutoSave] = useState(() => appPersistence.get<boolean>('detective:auto-save', true, (value): value is boolean => typeof value === 'boolean'));
+  const [motionLevel, setMotionLevel] = useState<MotionLevel>(() => appPersistence.get('detective:motion-level', getDefaultMotionLevel(), isMotionLevel));
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
   const [showGoogleContacts, setShowGoogleContacts] = useState(false);
@@ -83,6 +86,9 @@ export function App() {
   const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
   const [revealEntityRequest, setRevealEntityRequest] = useState<{ entityId: string; key: number }>();
   const [fitGraphRequestKey, setFitGraphRequestKey] = useState<number>();
+  const [layoutAnimationKey, setLayoutAnimationKey] = useState<number>();
+  const [removingEntityIds, setRemovingEntityIds] = useState<Set<string>>(() => new Set());
+  const [entityMotionById, setEntityMotionById] = useState<Record<string, EntityMotionState>>({});
   const [displayOpenRequest, setDisplayOpenRequest] = useState<DisplayOpenRequest>();
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [message, setMessage] = useState<string>();
@@ -92,6 +98,7 @@ export function App() {
   const redoStack = useRef<InvestigationCase[]>([]);
   const caseFileInput = useRef<HTMLInputElement>(null);
   const entityFileInput = useRef<HTMLInputElement>(null);
+  const motionFeedbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const researching = Object.values(researchByEntityId).some((research) => research.status === 'running');
   const runningEntityIds = useMemo(() => new Set(Object.values(researchByEntityId).filter((research) => research.status === 'running').map((research) => research.entityId)), [researchByEntityId]);
 
@@ -101,6 +108,12 @@ export function App() {
 
   useEffect(() => { appPersistence.set('detective:auto-open-inspector', autoOpenInspector); }, [autoOpenInspector]);
   useEffect(() => { appPersistence.set('detective:auto-save', autoSave); }, [autoSave]);
+  useEffect(() => {
+    appPersistence.set('detective:motion-level', motionLevel);
+    document.documentElement.dataset.motion = motionLevel;
+  }, [motionLevel]);
+
+  useEffect(() => () => motionFeedbackTimers.current.forEach((timer) => clearTimeout(timer)), []);
 
   useEffect(() => {
     investigationCaseRef.current = investigationCase;
@@ -185,6 +198,25 @@ export function App() {
     setInvestigationCase(next);
     if (autoSave) void queueCaseSave(next).catch(() => undefined);
     else setSaveState('dirty');
+  }
+
+  function showEntityMotion(entityIds: Iterable<string>, state: EntityMotionState) {
+    const ids = [...new Set(entityIds)];
+    if (ids.length === 0 || motionLevel === 'off') return;
+    setEntityMotionById((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, state])) }));
+    for (const id of ids) {
+      const existing = motionFeedbackTimers.current.get(id);
+      if (existing) clearTimeout(existing);
+      motionFeedbackTimers.current.set(id, setTimeout(() => {
+        setEntityMotionById((current) => {
+          if (!(id in current)) return current;
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+        motionFeedbackTimers.current.delete(id);
+      }, motionDuration(motionLevel, motionDurations.feedback)));
+    }
   }
 
   async function saveCurrentCase() {
@@ -402,6 +434,7 @@ export function App() {
       const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
       const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
       if (outcome.hasNewInformation) commit(() => outcome.investigationCase);
+      showEntityMotion([focusEntityId], outcome.hasNewInformation ? 'updated' : 'no-change');
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: {
         ...(current[focusEntityId] ?? initialResearch), status: 'completed', stage: 'completed',
         message: outcome.hasNewInformation
@@ -411,6 +444,7 @@ export function App() {
       } }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось найти информацию об объекте.';
+      showEntityMotion([focusEntityId], 'error');
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), status: 'error', stage: 'error', message: errorMessage } }));
       setMessage(errorMessage);
     }
@@ -479,6 +513,7 @@ export function App() {
       const currentFocus = latestCase.entities.find((entity) => entity.id === uniqueEntityIds[0]) ?? focusEntities[0];
       const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
       if (outcome.hasNewInformation) commit(() => outcome.investigationCase);
+      showEntityMotion(uniqueEntityIds, outcome.hasNewInformation ? 'updated' : 'no-change');
       const completionMessage = outcome.addedRelationCount || outcome.updatedRelationCount
         ? `Связи найдены: добавлено ${outcome.addedRelationCount}, обновлено ${outcome.updatedRelationCount}; новых объектов: ${outcome.addedEntityCount}.`
         : 'Новых подтверждаемых связей между выбранными объектами не найдено.';
@@ -490,6 +525,7 @@ export function App() {
       setMessage(`${titleList}: ${completionMessage}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось найти связи.';
+      showEntityMotion(uniqueEntityIds, 'error');
       setResearchByEntityId((current) => {
         const next = { ...current };
         for (const entityId of uniqueEntityIds) next[entityId] = { ...(current[entityId] ?? states[entityId]), status: 'error', stage: 'error', message: errorMessage };
@@ -504,20 +540,38 @@ export function App() {
     const ids = new Set(entityIds);
     const entities = investigationCase.entities.filter((item) => ids.has(item.id));
     if (entities.length === 0) return;
+    const caseId = investigationCase.id;
     const relationCount = investigationCase.relations.filter((relation) => ids.has(relation.sourceId) || ids.has(relation.targetId)).length;
-    commit((current) => entityIds.reduce((next, entityId) => removeEntityFromCase(next, entityId), current));
+    const finalizeRemoval = () => {
+      if (investigationCaseRef.current?.id !== caseId) {
+        setRemovingEntityIds(new Set());
+        return;
+      }
+      commit((current) => entityIds.reduce((next, entityId) => removeEntityFromCase(next, entityId), current));
+      setRemovingEntityIds((current) => {
+        const next = new Set(current);
+        entityIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setMessage(`${entities.length === 1 ? `Карточка «${entities[0].title}»` : `Карточек удалено: ${entities.length}`} и ${relationCount} связ. удалены.`);
+    };
+    setRemovingEntityIds((current) => new Set([...current, ...entityIds]));
     entitySelection.clear();
     setInspectorEntityId(undefined);
     setSelectedRelationId(undefined);
     setPendingDeleteEntityIds([]);
     setEntityMenu(undefined);
-    setMessage(`${entities.length === 1 ? `Карточка «${entities[0].title}»` : `Карточек удалено: ${entities.length}`} и ${relationCount} связ. удалены.`);
+    const delay = motionDuration(motionLevel, motionDurations.removal);
+    if (delay === 0) finalizeRemoval(); else setTimeout(finalizeRemoval, delay);
   }
 
   function arrangeObjects() {
     if (!investigationCase || investigationCase.entities.length === 0 || researching) return;
+    setLayoutAnimationKey((current) => (current ?? 0) + 1);
     commit((current) => arrangeInvestigationGraph(current, selectedEntityId));
-    setFitGraphRequestKey((current) => (current ?? 0) + 1);
+    const cameraDelay = motionDuration(motionLevel, 140);
+    if (cameraDelay === 0) setFitGraphRequestKey((current) => (current ?? 0) + 1);
+    else setTimeout(() => setFitGraphRequestKey((current) => (current ?? 0) + 1), cameraDelay);
     setMessage(selectedEntity
       ? `Связанные объекты расставлены вокруг карточки «${selectedEntity.title}».`
       : 'Объекты расставлены как связные деревья.');
@@ -721,9 +775,9 @@ export function App() {
   ];
 
   return (
-    <main className={`app-shell ${inspectorVisible ? 'has-inspector' : ''}`} data-theme="dark">
+    <main className={`app-shell ${inspectorVisible ? 'has-inspector' : ''}`} data-theme="dark" data-motion={motionLevel}>
       {page === 'settings' ? (
-        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} autoOpenInspector={autoOpenInspector} onAutoOpenInspectorChange={setAutoOpenInspector} autoSave={autoSave} onAutoSaveChange={setAutoSave} googleStatus={googleStatus} disconnectingGoogle={disconnectingGoogle} onDisconnectGoogle={disconnectGoogle} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
+        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} autoOpenInspector={autoOpenInspector} onAutoOpenInspectorChange={setAutoOpenInspector} autoSave={autoSave} onAutoSaveChange={setAutoSave} motionLevel={motionLevel} onMotionLevelChange={setMotionLevel} googleStatus={googleStatus} disconnectingGoogle={disconnectingGoogle} onDisconnectGoogle={disconnectGoogle} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
       ) : <>
       <section className="workspace">
         <header className="topbar">
@@ -747,10 +801,14 @@ export function App() {
           onlySubjectNetwork={onlySubjectNetwork}
           search={search}
           researchByEntityId={researchByEntityId}
+          entityMotionById={entityMotionById}
+          removingEntityIds={removingEntityIds}
           autoFitResearch={autoFitResearch}
+          motionLevel={motionLevel}
           researching={researching}
           revealEntityRequest={revealEntityRequest}
           fitGraphRequestKey={fitGraphRequestKey}
+          layoutAnimationKey={layoutAnimationKey}
           onSelectEntity={handleEntitySelection}
           onClearSelection={clearSelection}
           onOpenEntity={(entityId) => { entitySelection.select(entityId, investigationCase.entities.map((entity) => entity.id)); setInspectorEntityId(entityId); setSelectedRelationId(undefined); }}
