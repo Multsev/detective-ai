@@ -1,8 +1,9 @@
-import { Building2, CalendarDays, CheckCircle2, CircleHelp, FileText, LoaderCircle, MapPin, NotebookPen, TriangleAlert, UserRound } from 'lucide-react';
+import { Building2, CalendarDays, CheckCircle2, CircleHelp, ContactRound, ExternalLink, FileText, LoaderCircle, MapPin, NotebookPen, PenLine, TriangleAlert, UserRound } from 'lucide-react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { EntityResearchState, InvestigationEntity } from '../../shared/domain';
+import type { EntityProvenance } from '../lib/entityProvenance';
 
-export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean }, 'entity'>;
+export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; provenance: EntityProvenance }, 'entity'>;
 
 const iconByType = {
   person: UserRound,
@@ -25,7 +26,7 @@ const labelByType = {
 };
 
 export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
-  const { entity, research, isResearchSubject } = data;
+  const { entity, research, isResearchSubject, provenance } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const questions = entity.facts.filter((fact) => fact.kind === 'question').length;
@@ -46,6 +47,13 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
         </div>
       </header>
       <p className="entity-card__summary">{entity.summary}</p>
+      <div className={`entity-card__source entity-card__source--${provenance.primary.kind}`} title={provenance.primary.title}>
+        {provenance.primary.kind === 'manual' ? <PenLine size={10} /> : provenance.primary.kind === 'google' ? <ContactRound size={10} /> : <FileText size={10} />}
+        {'href' in provenance.primary && provenance.primary.href
+          ? <a className="nodrag nopan" href={provenance.primary.href} target="_blank" rel="noreferrer" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{provenance.primary.label}<ExternalLink size={9} /></a>
+          : <span>{provenance.primary.label}</span>}
+        {provenance.additionalCount > 0 && <small title={`Ещё источников: ${provenance.additionalCount}`}>+{provenance.additionalCount}</small>}
+      </div>
       {research && <div className="entity-research-status" title={research.message}>
         {research.status === 'running' ? <LoaderCircle size={12} className="spin" /> : research.status === 'completed' ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
         <div><strong>{research.status === 'running' ? 'Codex исследует' : research.status === 'completed' ? 'Исследование готово' : 'Ошибка исследования'}</strong><span>{research.message}</span></div>

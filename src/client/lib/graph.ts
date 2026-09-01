@@ -23,8 +23,10 @@ export function mergeResearchResult(
   result: ResearchResult,
 ): InvestigationCase {
   const existingEntityIds = new Set(investigationCase.entities.map((entity) => entity.id));
-  const acceptedEntities = result.candidateEntities
-    .filter((entity) => !existingEntityIds.has(entity.id))
+  const candidateEntities = result.candidateEntities.filter((entity) => !existingEntityIds.has(entity.id));
+  const validIds = new Set([...existingEntityIds, ...candidateEntities.map((entity) => entity.id)]);
+  const acceptedClaims = result.claims.filter((claim) => validIds.has(claim.subjectId) && validIds.has(claim.objectId));
+  const acceptedEntities = candidateEntities
     .map((entity, index): InvestigationEntity => ({
       ...entity,
       position: {
@@ -32,12 +34,15 @@ export function mergeResearchResult(
         y: focusEntity.position.y - 100 + Math.floor(index / 2) * 220,
       },
       facts: [],
+      sourceIds: [...new Set(acceptedClaims
+        .filter((claim) => claim.subjectId === entity.id || claim.objectId === entity.id)
+        .flatMap((claim) => claim.sourceIds))],
+      createdBy: 'ai',
     }));
 
-  const validIds = new Set([...existingEntityIds, ...acceptedEntities.map((entity) => entity.id)]);
   const existingRelationIds = new Set(investigationCase.relations.map((relation) => relation.id));
-  const acceptedRelations = result.claims
-    .filter((claim) => validIds.has(claim.subjectId) && validIds.has(claim.objectId) && !existingRelationIds.has(claim.id))
+  const acceptedRelations = acceptedClaims
+    .filter((claim) => !existingRelationIds.has(claim.id))
     .map((claim): InvestigationRelation => ({
       id: claim.id,
       sourceId: claim.subjectId,

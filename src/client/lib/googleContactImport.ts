@@ -43,6 +43,8 @@ export function importGoogleContact(investigationCase: InvestigationCase, contac
       y: 180 + (Math.floor(investigationCase.entities.length / 4) % 4) * 210,
     },
     facts,
+    sourceIds: [sourceId],
+    createdBy: 'user',
   };
   const source: SourceReference = {
     id: sourceId,

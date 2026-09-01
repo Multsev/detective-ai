@@ -19,6 +19,7 @@ describe('Google contact import', () => {
     const entity = result.investigationCase.entities.find((item) => item.id === result.entityId)!;
     expect(result.created).toBe(true);
     expect(entity).toMatchObject({ type: 'person', title: 'Иван Петрович Сидоров', subtitle: 'Директор · ООО «Пример»' });
+    expect(entity).toMatchObject({ createdBy: 'user', sourceIds: ['google-contact-c123'] });
     expect(entity.facts.map((fact) => fact.text)).toContain('Отчество: Петрович');
     expect(entity.facts.map((fact) => fact.text)).toContain('Телефон (mobile): +7 900 000-00-00');
     expect(result.investigationCase.sources.at(-1)).toMatchObject({ kind: 'google_contact', publisher: 'Google Contacts' });

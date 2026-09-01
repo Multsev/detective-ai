@@ -20,6 +20,7 @@ describe('research proposal merge', () => {
     });
 
     expect(merged.entities.some((entity) => entity.id === 'new-company')).toBe(true);
+    expect(merged.entities.find((entity) => entity.id === 'new-company')).toMatchObject({ createdBy: 'ai', sourceIds: ['source-1'] });
     expect(merged.relations.some((relation) => relation.id === 'valid')).toBe(true);
     expect(merged.relations.some((relation) => relation.id === 'invalid')).toBe(false);
   });

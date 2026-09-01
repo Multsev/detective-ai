@@ -79,6 +79,8 @@ export interface InvestigationEntity {
   summary: string;
   position: { x: number; y: number };
   facts: CaseFact[];
+  sourceIds?: string[];
+  createdBy?: 'user' | 'ai';
 }
 
 export interface InvestigationRelation {

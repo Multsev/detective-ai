@@ -21,6 +21,7 @@ import { api } from './lib/api';
 import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from './lib/graph';
 import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
 import { arrangeInvestigationGraph } from './lib/treeGraphLayout';
+import { getEntityProvenance } from './lib/entityProvenance';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
 import { CreateCaseDialog } from './components/CreateCaseDialog';
@@ -170,6 +171,8 @@ export function App() {
       ...input,
       position: { x: 240 + Math.random() * 460, y: 180 + Math.random() * 300 },
       facts: [],
+      sourceIds: [],
+      createdBy: 'user',
     };
     commit((current) => ({ ...current, entities: [...current.entities, entity] }));
     setSelectedEntityId(id);
@@ -416,6 +419,7 @@ export function App() {
         aiConfigured={health.codex.ready}
         research={selectedEntity ? researchByEntityId[selectedEntity.id] : undefined}
         researchSubject={getResearchSubjectEntity(displayedCase)}
+        provenance={selectedEntity ? getEntityProvenance(displayedCase, selectedEntity) : undefined}
         onAddFact={addFact}
         onAddRelation={addRelation}
         onResearch={(question, file) => research(question, selectedEntityId, file)}

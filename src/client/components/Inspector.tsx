@@ -3,6 +3,7 @@ import { ArrowUpRight, Bot, ContactRound, Crosshair, FileText, FileUp, Globe2, L
 import { IconButton, Select } from '@operator-ui/framework';
 import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
+import { presentSource, type EntityProvenance } from '../lib/entityProvenance';
 
 interface InspectorProps {
   entity?: InvestigationEntity;
@@ -12,13 +13,14 @@ interface InspectorProps {
   aiConfigured: boolean;
   research?: EntityResearchState;
   researchSubject?: InvestigationEntity;
+  provenance?: EntityProvenance;
   onAddFact: (kind: CaseFact['kind'], text: string) => void;
   onAddRelation: (targetId: string, label: string) => void;
   onResearch: (question: string, file?: File) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, provenance, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
   const [entryText, setEntryText] = useState('');
   const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
   const [researchQuestion, setResearchQuestion] = useState('');
@@ -93,6 +95,13 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
       <h2>{entity.title}</h2>
       <p className="inspector__subtitle">{entity.subtitle}</p>
       <p className="body-copy">{entity.summary}</p>
+      {provenance && <div className="inspector-entity-sources" aria-label="Источники карточки">
+        <strong>Источник</strong>
+        {provenance.sources.length > 0 ? provenance.sources.map((source) => source.href
+          ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}<ArrowUpRight size={9} /></a>
+          : <span title={source.title} key={source.id}>{source.label}</span>)
+          : <span title={provenance.primary.title}>{provenance.primary.label}</span>}
+      </div>}
 
       <section className="research-box">
         <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>
@@ -123,12 +132,25 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
       <section className="inspector-section">
         <div className="section-heading"><h3>Факты и вопросы</h3><span>{entity.facts.length}</span></div>
         <div className="fact-list">
-          {entity.facts.map((fact) => (
-            <article className={`fact-item fact-item--${fact.kind}`} key={fact.id}>
+          {entity.facts.map((fact) => {
+            const factSources = fact.sourceIds
+              .map((sourceId) => sourceById.get(sourceId))
+              .filter((source): source is SourceReference => Boolean(source))
+              .map(presentSource);
+            return <article className={`fact-item fact-item--${fact.kind}`} key={fact.id}>
               <span>{fact.kind === 'question' ? '?' : fact.kind === 'note' ? '✎' : '•'}</span>
-              <div><p>{fact.text}</p><small>{evidenceStyles[fact.status].label} · {Math.round(fact.confidence * 100)}%</small></div>
-            </article>
-          ))}
+              <div>
+                <p>{fact.text}</p>
+                <small>{evidenceStyles[fact.status].label} · {Math.round(fact.confidence * 100)}%</small>
+                <div className="fact-sources">
+                  {factSources.map((source) => source.href
+                    ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}<ArrowUpRight size={9} /></a>
+                    : <span title={source.title} key={source.id}>{source.label}</span>)}
+                  {factSources.length === 0 && <span>{fact.createdBy === 'user' ? 'Вручную' : 'Источник не указан'}</span>}
+                </div>
+              </div>
+            </article>;
+          })}
           {entity.facts.length === 0 && <p className="muted-copy">Пока нет записей.</p>}
         </div>
         <div className="entry-composer">

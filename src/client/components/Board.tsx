@@ -16,6 +16,7 @@ import type { EntityResearchState, EntityType, InvestigationCase, InvestigationR
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { getResearchSubjectEntityId } from '../../shared/caseSubject';
 import { isEntityVisible } from '../lib/graph';
+import { getEntityProvenance } from '../lib/entityProvenance';
 import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
 
@@ -43,10 +44,10 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId },
+    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, provenance: getEntityProvenance(investigationCase, entity) },
     selected: entity.id === selectedEntityId,
     hidden: !isEntityVisible(entity, visibleTypes, search),
-  })), [investigationCase.entities, researchByEntityId, researchSubjectEntityId, search, selectedEntityId, visibleTypes]);
+  })), [investigationCase, researchByEntityId, researchSubjectEntityId, search, selectedEntityId, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];
