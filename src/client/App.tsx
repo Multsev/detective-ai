@@ -18,6 +18,7 @@ import { mergeResearchResult } from './lib/graph';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
 import { CreateCaseDialog } from './components/CreateCaseDialog';
+import { EvidenceLegendControl } from './components/EvidenceLegendControl';
 import { Inspector } from './components/Inspector';
 import { LayerControl } from './components/LayerControl';
 import { ResearchLivePanel } from './components/ResearchLivePanel';
@@ -309,6 +310,7 @@ export function App() {
           }))}
         />
         <LayerControl investigationCase={displayedCase} visibleTypes={visibleTypes} onToggle={toggleLayer} onShowAll={() => setVisibleTypes(new Set(entityTypes))} />
+        <EvidenceLegendControl />
         {(researching || previewCase) && <ResearchLivePanel logs={researchLogs} researching={researching} result={researchResult} visibleEntities={visibleResearchEntities} visibleRelations={visibleResearchRelations} onAccept={acceptResearch} onReject={rejectResearch} />}
         {message && <button className="toast" onClick={() => setMessage(undefined)}>{message}<span>×</span></button>}
       </section>
