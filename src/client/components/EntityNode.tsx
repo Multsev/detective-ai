@@ -33,6 +33,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const questions = entity.facts.filter((fact) => fact.kind === 'question').length;
   const occurredAtLabel = formatTemporalDate(entity.occurredAt);
+  const primaryAttributes = (entity.attributes ?? []).slice(0, 2);
 
   return (
     <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
@@ -50,6 +51,9 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
         </div>
       </header>
       {!reducedDetail && <p className="entity-card__summary">{entity.summary}</p>}
+      {!reducedDetail && primaryAttributes.length > 0 && <dl className="entity-card__attributes">
+        {primaryAttributes.map((attribute) => <div key={attribute.id}><dt>{attribute.label}</dt><dd title={attribute.value}>{attribute.value}</dd></div>)}
+      </dl>}
       {!reducedDetail && occurredAtLabel && <div className="entity-card__date" title="Дата объекта или события"><CalendarDays size={10} /><time dateTime={entity.occurredAt}>{occurredAtLabel}</time></div>}
       {!reducedDetail && <div className={`entity-card__source entity-card__source--${provenance.primary.kind}`} title={provenance.primary.title}>
         {provenance.primary.kind === 'manual' ? <PenLine size={10} /> : provenance.primary.kind === 'google' ? <ContactRound size={10} /> : <FileText size={10} />}

@@ -22,6 +22,9 @@ describe('Google contact import', () => {
     expect(entity).toMatchObject({ createdBy: 'user', sourceIds: ['google-contact-c123'] });
     expect(entity.facts.map((fact) => fact.text)).toContain('Отчество: Петрович');
     expect(entity.facts.map((fact) => fact.text)).toContain('Телефон (mobile): +7 900 000-00-00');
+    expect(entity.attributes).toContainEqual(expect.objectContaining({ key: 'phone', value: '+7 900 000-00-00', kind: 'phone', createdBy: 'integration' }));
+    expect(entity.attributes).toContainEqual(expect.objectContaining({ key: 'email', value: 'ivan@example.test', kind: 'email' }));
+    expect(entity.attributes).toContainEqual(expect.objectContaining({ key: 'position', value: 'Директор' }));
     expect(result.investigationCase.sources.at(-1)).toMatchObject({ kind: 'google_contact', publisher: 'Google Contacts' });
   });
 

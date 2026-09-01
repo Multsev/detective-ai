@@ -96,6 +96,39 @@ describe('research proposal merge', () => {
     expect(second.addedQuestionCount).toBe(0);
     expect(second.hasNewInformation).toBe(false);
   });
+
+  it('adds sourced requisites to an existing entity and de-duplicates a repeated value', () => {
+    const investigationCase = createSeedCase();
+    const focus = investigationCase.entities[0];
+    const result = {
+      summary: 'Найден официальный реквизит.', identityAssessment: '', candidateEntities: [], claims: [], questions: [], warnings: [],
+      entityUpdates: [{ entityId: focus.id, attributes: [{ key: 'email', label: 'Email', value: 'office@example.org', kind: 'email' as const, sourceIds: ['official'], confidence: 0.9 }] }],
+      sources: [{ id: 'official', title: 'Официальная страница', url: 'https://example.org/contacts', publisher: 'Example', publishedAt: '', accessedAt: '2026-09-01' }],
+    };
+    const first = mergeResearchResultWithOutcome(investigationCase, focus, result);
+    const secondFocus = first.investigationCase.entities.find((entity) => entity.id === focus.id)!;
+    const second = mergeResearchResultWithOutcome(first.investigationCase, secondFocus, result);
+
+    expect(first.addedAttributeCount).toBe(1);
+    expect(first.updatedEntityCount).toBe(1);
+    expect(secondFocus.attributes).toContainEqual(expect.objectContaining({ key: 'email', value: 'office@example.org', sourceIds: ['official'] }));
+    expect(first.investigationCase.sources).toContainEqual(expect.objectContaining({ id: 'official' }));
+    expect(second.addedAttributeCount).toBe(0);
+    expect(second.hasNewInformation).toBe(false);
+  });
+
+  it('moves requisites from a duplicate candidate onto the existing card', () => {
+    const investigationCase = createSeedCase();
+    const focus = investigationCase.entities[0];
+    const outcome = mergeResearchResultWithOutcome(investigationCase, focus, {
+      summary: '', identityAssessment: '', entityUpdates: [], claims: [], questions: [], warnings: [], sources: [],
+      candidateEntities: [{ id: 'duplicate-focus', type: focus.type, title: focus.title, subtitle: '', summary: '', occurredAt: '', attributes: [{ key: 'social', label: 'Социальная сеть', value: 'https://social.example/profile', kind: 'social', sourceIds: [], confidence: 0.5 }] }],
+    });
+
+    expect(outcome.addedEntityCount).toBe(0);
+    expect(outcome.addedAttributeCount).toBe(1);
+    expect(outcome.investigationCase.entities.find((entity) => entity.id === focus.id)?.attributes).toContainEqual(expect.objectContaining({ key: 'social' }));
+  });
 });
 
 describe('entity removal', () => {

@@ -1,4 +1,4 @@
-import type { CaseFact, GoogleContact, InvestigationCase, InvestigationEntity, SourceReference } from '../../shared/domain';
+import type { CaseFact, EntityAttribute, GoogleContact, InvestigationCase, InvestigationEntity, SourceReference } from '../../shared/domain';
 
 export interface GoogleContactImportResult {
   investigationCase: InvestigationCase;
@@ -43,6 +43,7 @@ export function importGoogleContact(investigationCase: InvestigationCase, contac
       y: 180 + (Math.floor(investigationCase.entities.length / 4) % 4) * 210,
     },
     facts,
+    attributes: buildGoogleContactAttributes(contact, sourceId),
     sourceIds: [sourceId],
     createdBy: 'user',
   };
@@ -65,6 +66,31 @@ export function importGoogleContact(investigationCase: InvestigationCase, contac
     entityId,
     created: true,
   };
+}
+
+export function buildGoogleContactAttributes(contact: GoogleContact, sourceId: string): EntityAttribute[] {
+  const raw = [
+    ...contact.phoneNumbers.map((item) => ({ key: 'phone', label: item.type ? `Телефон · ${item.type}` : 'Телефон', value: item.value, kind: 'phone' as const })),
+    ...contact.emailAddresses.map((item) => ({ key: 'email', label: item.type ? `Email · ${item.type}` : 'Email', value: item.value, kind: 'email' as const })),
+    ...contact.urls.map((item) => ({ key: item.type === 'social' || item.type === 'profile' ? 'social' : 'website', label: item.type ? `Ссылка · ${item.type}` : 'Ссылка', value: item.value, kind: item.type === 'social' || item.type === 'profile' ? 'social' as const : 'website' as const })),
+    ...contact.organizations.flatMap((organization) => [
+      organization.title && { key: 'position', label: 'Должность', value: organization.title, kind: 'text' as const },
+      organization.name && { key: 'organization', label: 'Организация', value: organization.name, kind: 'text' as const },
+    ].filter((item): item is { key: string; label: string; value: string; kind: 'text' } => Boolean(item))),
+  ];
+  const seen = new Set<string>();
+  return raw.filter((item) => item.value.trim()).filter((item) => {
+    const identity = `${item.key}:${item.value.trim().toLowerCase()}`;
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  }).map((item, index) => ({
+    ...item,
+    id: `attribute-${sourceId}-${index + 1}`,
+    sourceIds: [sourceId],
+    createdBy: 'integration' as const,
+    confidence: 0.6,
+  }));
 }
 
 export function buildGoogleContactFactLines(contact: GoogleContact): string[] {

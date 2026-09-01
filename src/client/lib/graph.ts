@@ -1,5 +1,6 @@
-import type { EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchResult } from '../../shared/domain';
+import type { EntityAttribute, EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchEntityAttribute, ResearchResult } from '../../shared/domain';
 import { normalizeCaseSubject } from '../../shared/caseSubject';
+import { attributeIdentityKey } from '../../shared/entityAttributeCatalog';
 
 export interface ResearchMergeOutcome {
   investigationCase: InvestigationCase;
@@ -9,6 +10,8 @@ export interface ResearchMergeOutcome {
   addedSourceCount: number;
   addedQuestionCount: number;
   updatedRelationCount: number;
+  addedAttributeCount: number;
+  updatedEntityCount: number;
   hasNewInformation: boolean;
 }
 
@@ -79,6 +82,35 @@ export function mergeResearchResultWithOutcome(
     candidateEntitiesByIdentity.set(entityIdentityKey(entity), entity);
   }
 
+  const requestedAttributesByEntity = new Map<string, ResearchEntityAttribute[]>();
+  const collectAttributes = (entityId: string, attributes: ResearchEntityAttribute[]) => {
+    const canonicalId = entityAliases.get(entityId) ?? entityId;
+    if (!existingEntityIds.has(canonicalId) || attributes.length === 0) return;
+    requestedAttributesByEntity.set(canonicalId, [...(requestedAttributesByEntity.get(canonicalId) ?? []), ...attributes]);
+  };
+  for (const update of result.entityUpdates ?? []) collectAttributes(update.entityId, update.attributes);
+  for (const candidate of result.candidateEntities) {
+    if ((entityAliases.get(candidate.id) ?? candidate.id) !== candidate.id) collectAttributes(candidate.id, candidate.attributes ?? []);
+  }
+
+  const entityAttributeUpdates = new Map<string, EntityAttribute[]>();
+  let addedAttributeCount = 0;
+  for (const [entityId, requested] of requestedAttributesByEntity) {
+    const entity = investigationCase.entities.find((item) => item.id === entityId);
+    if (!entity) continue;
+    const attributes = [...(entity.attributes ?? [])];
+    const identities = new Set(attributes.map(attributeIdentityKey));
+    for (const rawAttribute of requested) {
+      const attribute = remapResearchAttribute(rawAttribute, sourceAliases);
+      const identity = attributeIdentityKey(attribute);
+      if (!attribute.value.trim() || identities.has(identity)) continue;
+      identities.add(identity);
+      attributes.push(toEntityAttribute(entityId, attribute));
+      addedAttributeCount += 1;
+    }
+    if (attributes.length !== (entity.attributes ?? []).length) entityAttributeUpdates.set(entityId, attributes);
+  }
+
   const validIds = new Set([...existingEntityIds, ...candidateEntities.map((entity) => entity.id)]);
   const existingRelationsById = new Map(investigationCase.relations.map((relation) => [relation.id, relation]));
   const existingRelationsByIdentity = new Map(investigationCase.relations.map((relation) => [relationIdentityKey(relation.sourceId, relation.targetId, relation.label, relation.occurredAt), relation]));
@@ -120,6 +152,8 @@ export function mergeResearchResultWithOutcome(
   const acceptedEntities = candidateEntities
     .map((entity, index): InvestigationEntity => ({
       ...entity,
+      attributes: uniqueResearchAttributes((entity.attributes ?? []).map((attribute) => remapResearchAttribute(attribute, sourceAliases)))
+        .map((attribute) => toEntityAttribute(entity.id, attribute)),
       position: {
         x: focusEntity.position.x + 290 + (index % 2) * 250,
         y: focusEntity.position.y - 100 + Math.floor(index / 2) * 220,
@@ -146,9 +180,12 @@ export function mergeResearchResultWithOutcome(
       occurredAt: claim.occurredAt || undefined,
     }));
 
+  addedAttributeCount += acceptedEntities.reduce((count, entity) => count + (entity.attributes?.length ?? 0), 0);
   const usedSourceIds = new Set([
     ...acceptedClaims.flatMap((claim) => claim.sourceIds),
     ...[...relationUpdates.values()].flatMap((relation) => relation.sourceIds),
+    ...[...entityAttributeUpdates.values()].flatMap((attributes) => attributes.flatMap((attribute) => attribute.sourceIds)),
+    ...acceptedEntities.flatMap((entity) => (entity.attributes ?? []).flatMap((attribute) => attribute.sourceIds)),
   ]);
   const acceptedSources = [...candidateSourcesById.values()].filter((source) => usedSourceIds.has(source.id));
   const currentFocus = investigationCase.entities.find((entity) => entity.id === focusEntity.id) ?? focusEntity;
@@ -167,11 +204,15 @@ export function mergeResearchResultWithOutcome(
     warningKeys.add(key);
     return true;
   });
-  const hasNewInformation = acceptedEntities.length > 0 || acceptedRelations.length > 0 || acceptedSources.length > 0 || relationUpdates.size > 0 || acceptedQuestions.length > 0;
+  const hasNewInformation = acceptedEntities.length > 0 || acceptedRelations.length > 0 || acceptedSources.length > 0 || relationUpdates.size > 0 || acceptedQuestions.length > 0 || addedAttributeCount > 0;
   const deduplicatedResult: ResearchResult = {
     ...result,
     summary: hasNewInformation ? result.summary : 'Новых сведений по сравнению с материалами дела не найдено.',
     candidateEntities,
+    entityUpdates: [...entityAttributeUpdates].map(([entityId, attributes]) => ({
+      entityId,
+      attributes: attributes.filter((attribute) => !(investigationCase.entities.find((entity) => entity.id === entityId)?.attributes ?? []).some((existing) => attributeIdentityKey(existing) === attributeIdentityKey(attribute))),
+    })),
     claims: acceptedClaims,
     questions: acceptedQuestions,
     sources: acceptedSources,
@@ -190,9 +231,11 @@ export function mergeResearchResultWithOutcome(
   const mergedCase = {
     ...investigationCase,
     entities: [
-      ...investigationCase.entities.map((entity) => entity.id === focusEntity.id && acceptedQuestionFacts.length > 0
-        ? { ...entity, facts: [...entity.facts, ...acceptedQuestionFacts] }
-        : entity),
+      ...investigationCase.entities.map((entity) => {
+        const attributes = entityAttributeUpdates.get(entity.id);
+        const facts = entity.id === focusEntity.id && acceptedQuestionFacts.length > 0 ? [...entity.facts, ...acceptedQuestionFacts] : entity.facts;
+        return attributes || facts !== entity.facts ? { ...entity, attributes: attributes ?? entity.attributes, facts } : entity;
+      }),
       ...acceptedEntities,
     ],
     relations: [
@@ -209,7 +252,31 @@ export function mergeResearchResultWithOutcome(
     addedSourceCount: acceptedSources.length,
     addedQuestionCount: acceptedQuestions.length,
     updatedRelationCount: relationUpdates.size,
+    addedAttributeCount,
+    updatedEntityCount: entityAttributeUpdates.size,
     hasNewInformation,
+  };
+}
+
+function remapResearchAttribute(attribute: ResearchEntityAttribute, sourceAliases: Map<string, string>): ResearchEntityAttribute {
+  return { ...attribute, sourceIds: [...new Set(attribute.sourceIds.map((sourceId) => sourceAliases.get(sourceId) ?? sourceId))] };
+}
+
+function uniqueResearchAttributes(attributes: ResearchEntityAttribute[]): ResearchEntityAttribute[] {
+  const identities = new Set<string>();
+  return attributes.filter((attribute) => {
+    const identity = attributeIdentityKey(attribute);
+    if (!attribute.value.trim() || identities.has(identity)) return false;
+    identities.add(identity);
+    return true;
+  });
+}
+
+function toEntityAttribute(entityId: string, attribute: ResearchEntityAttribute): EntityAttribute {
+  return {
+    ...attribute,
+    id: `attribute-${stableTextHash(`${entityId}:${attributeIdentityKey(attribute)}`)}`,
+    createdBy: 'ai',
   };
 }
 

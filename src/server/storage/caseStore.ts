@@ -74,6 +74,7 @@ export class CaseStore {
       summary: 'Исходная карточка нового расследования. Добавьте известные факты или запустите поиск.',
       position: { x: 360, y: 220 },
       facts: [],
+      attributes: [],
       sourceIds: [],
       createdBy: 'user',
     };

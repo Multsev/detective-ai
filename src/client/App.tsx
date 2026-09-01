@@ -6,6 +6,7 @@ import type {
   CaseFact,
   CreateCaseInput,
   EntityResearchState,
+  EntityAttributeKind,
   EntityType,
   GoogleContact,
   GoogleIntegrationStatus,
@@ -16,6 +17,7 @@ import type {
   ResearchStreamEvent,
 } from '../shared/domain';
 import { entityTypes } from '../shared/domain';
+import { attributeIdentityKey } from '../shared/entityAttributeCatalog';
 import { getDefaultSubjectEntityId, getResearchSubjectEntity, getResearchSubjectEntityId, resetResearchSubject, setResearchSubject } from '../shared/caseSubject';
 import { api } from './lib/api';
 import { isEntityVisible, mergeResearchResultWithOutcome, removeEntityFromCase } from './lib/graph';
@@ -179,6 +181,7 @@ export function App() {
       ...input,
       position: { x: 240 + Math.random() * 460, y: 180 + Math.random() * 300 },
       facts: [],
+      attributes: [],
       sourceIds: [],
       createdBy: 'user',
     };
@@ -212,6 +215,28 @@ export function App() {
     commit((current) => ({
       ...current,
       entities: current.entities.map((entity) => entity.id === selectedEntityId ? { ...entity, facts: [...entity.facts, fact] } : entity),
+    }));
+  }
+
+  function addAttribute(input: { key: string; label: string; value: string; kind: EntityAttributeKind }) {
+    if (!selectedEntityId) return;
+    const value = input.value.trim();
+    if (!value) return;
+    commit((current) => ({
+      ...current,
+      entities: current.entities.map((entity) => entity.id === selectedEntityId ? {
+        ...entity,
+        attributes: (entity.attributes ?? []).some((attribute) => attributeIdentityKey(attribute) === attributeIdentityKey({ ...input, value }))
+          ? entity.attributes
+          : [...(entity.attributes ?? []), {
+          id: `attribute-${crypto.randomUUID().slice(0, 8)}`,
+          ...input,
+          value,
+          sourceIds: [],
+          createdBy: 'user' as const,
+          confidence: 0.5,
+        }],
+      } : entity),
     }));
   }
 
@@ -276,7 +301,7 @@ export function App() {
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: {
         ...(current[focusEntityId] ?? initialResearch), status: 'completed', stage: 'completed',
         message: outcome.hasNewInformation
-          ? `Добавлено: ${outcome.addedEntityCount} карточек, ${outcome.addedRelationCount} связей, ${outcome.addedSourceCount} источников, ${outcome.addedQuestionCount} вопросов${outcome.updatedRelationCount ? `; обновлено связей: ${outcome.updatedRelationCount}` : ''}.`
+          ? `Добавлено: ${outcome.addedAttributeCount} реквизитов, ${outcome.addedEntityCount} карточек, ${outcome.addedRelationCount} связей, ${outcome.addedSourceCount} источников, ${outcome.addedQuestionCount} вопросов${outcome.updatedRelationCount ? `; обновлено связей: ${outcome.updatedRelationCount}` : ''}.`
           : 'Новых сведений и связей не найдено.',
         result: outcome.result,
       } }));
@@ -431,6 +456,7 @@ export function App() {
         researchSubject={getResearchSubjectEntity(displayedCase)}
         provenance={selectedEntity ? getEntityProvenance(displayedCase, selectedEntity) : undefined}
         onAddFact={addFact}
+        onAddAttribute={addAttribute}
         onAddRelation={addRelation}
         onResearch={(question, file) => research(question, selectedEntityId, file)}
         onClose={() => { setSelectedEntityId(undefined); setSelectedRelationId(undefined); }}

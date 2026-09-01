@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { InvestigationCase, InvestigationEntity, McpServerSetting, McpSettings, ResearchDocument, ResearchResult, ResearchStreamEvent, SourceReference } from '../../shared/domain.js';
 import { getDefaultSubjectEntityId, getResearchSubjectEntity } from '../../shared/caseSubject.js';
+import { entityAttributeCatalog } from '../../shared/entityAttributeCatalog.js';
 import { researchJsonSchema, researchResultSchema } from './researchSchema.js';
 
 const investigatorInstructions = `
@@ -11,8 +12,10 @@ const investigatorInstructions = `
 Ты — исследователь материалов для графа связей. Исследуй указанный приложением источник
 по выбранной карточке и верни только JSON по предоставленной схеме.
 
-Используй законно доступные публичные источники. Не собирай домашние адреса, личные телефоны,
-документы, номера счетов, сведения о семье и другие чувствительные персональные данные.
+Используй законно доступные публичные источники. Не собирай домашние адреса, частные личные
+контакты, документы личности, персональные номера счетов, сведения о семье и другие
+чувствительные персональные данные. Разрешены явно опубликованные деловые контакты и
+официальные реквизиты организаций.
 Сначала разреши идентичность и не смешивай однофамильцев. Каждая связь должна иметь источник.
 Отсутствие результата означает unknown, а не опровержение. Не делай выводов о виновности.
 
@@ -23,6 +26,9 @@ contradicted — достоверные источники расходятся;
 
 Используй существующие ID сущностей. Для новых карточек создавай короткие URL-safe ID.
 Связи могут ссылаться только на существующие ID или на ID из candidateEntities.
+До построения связей сначала найди и заполни стандартные реквизиты фокусной карточки.
+Реквизиты существующей карточки возвращай в entityUpdates, новой — в candidateEntities[].attributes.
+Каждый найденный реквизит должен иметь sourceIds и confidence. Не повторяй уже известные значения.
 В веб-режиме источники должны содержать точные публичные URL. В файловом режиме не создавай
 источник заново: ссылайся на выданный приложением sourceId загруженного файла.
 Для каждой новой сущности и связи заполняй occurredAt датой самого события или периода,
@@ -125,6 +131,10 @@ export class CodexResearchRunner {
     };
     const knownCoverage = {
       entityIds: investigationCase.entities.map((entity) => entity.id),
+      entityAttributes: investigationCase.entities.map((entity) => ({
+        entityId: entity.id,
+        values: entity.attributes ?? [],
+      })),
       relations: investigationCase.relations.map((relation) => ({
         sourceId: relation.sourceId,
         predicate: relation.label,
@@ -150,7 +160,7 @@ export class CodexResearchRunner {
     const relationshipGoal = researchSubject.id === focusEntity.id
       ? 'Фокусная карточка является текущим исследуемым объектом. Найди и проверь связи вокруг неё.'
       : `Фокусная карточка является отдельной ветвью. Проверь её прямые и косвенные связи с исследуемым объектом «${researchSubject.title}» (${researchSubject.id}); не утверждай наличие связи без источников.`;
-    const prompt = `${investigatorInstructions}\n\n${sourceInstructions}\n\nИсследуемый объект дела:\n${JSON.stringify(researchSubject)}\n\nФокусная карточка текущего запуска:\n${JSON.stringify(focusEntity)}\n\nЗадача сопоставления:\n${relationshipGoal}\n\nУже покрытые данные — не возвращай их повторно:\n${JSON.stringify(knownCoverage)}\n\nПолный контекст текущего дела:\n${JSON.stringify(graphContext)}\n\nВопрос пользователя:\n${researchQuestion || (document ? 'Извлеки из документа только новые факты, сущности, связи и вопросы, относящиеся к выбранной карточке и исследуемому объекту дела.' : 'Найди новые связанные компании, людей, документы, события и проверяемые отношения, которых ещё нет в деле.')}`;
+    const prompt = `${investigatorInstructions}\n\nКаталог стандартных реквизитов по типам карточек (используй указанные key, label и kind):\n${JSON.stringify(entityAttributeCatalog)}\n\n${sourceInstructions}\n\nИсследуемый объект дела:\n${JSON.stringify(researchSubject)}\n\nФокусная карточка текущего запуска:\n${JSON.stringify(focusEntity)}\n\nЗадача сопоставления:\n${relationshipGoal}\n\nУже покрытые данные — не возвращай их повторно:\n${JSON.stringify(knownCoverage)}\n\nПолный контекст текущего дела:\n${JSON.stringify(graphContext)}\n\nВопрос пользователя:\n${researchQuestion || (document ? 'Сначала извлеки из документа новые реквизиты выбранной карточки, затем факты, сущности, связи и вопросы, относящиеся к ней и исследуемому объекту дела.' : 'Сначала найди стандартные реквизиты выбранной карточки, затем новые связанные компании, людей, документы, события и проверяемые отношения, которых ещё нет в деле.')}`;
 
     emit({ type: 'status', stage: 'starting', message: document ? `Передаю Codex текст файла «${document.fileName}».` : 'Запускаю Codex CLI в безопасном режиме только для чтения.' });
 

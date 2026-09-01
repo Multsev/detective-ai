@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { entityTypes, evidenceStatuses } from '../../shared/domain.js';
+import { entityAttributeKinds, entityTypes, evidenceStatuses } from '../../shared/domain.js';
 
 const sourceSchema = z.object({
   id: z.string().min(1),
@@ -9,6 +9,29 @@ const sourceSchema = z.object({
   publishedAt: z.string(),
   accessedAt: z.string(),
 });
+
+const entityAttributeSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  value: z.string().min(1),
+  kind: z.enum(entityAttributeKinds),
+  sourceIds: z.array(z.string()).min(1),
+  confidence: z.number().min(0).max(1),
+});
+
+const entityAttributeJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['key', 'label', 'value', 'kind', 'sourceIds', 'confidence'],
+  properties: {
+    key: { type: 'string' },
+    label: { type: 'string' },
+    value: { type: 'string' },
+    kind: { type: 'string', enum: entityAttributeKinds },
+    sourceIds: { type: 'array', minItems: 1, items: { type: 'string' } },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+  },
+} as const;
 
 export const researchResultSchema = z.object({
   summary: z.string(),
@@ -20,6 +43,11 @@ export const researchResultSchema = z.object({
     subtitle: z.string(),
     summary: z.string(),
     occurredAt: z.string(),
+    attributes: z.array(entityAttributeSchema),
+  })),
+  entityUpdates: z.array(z.object({
+    entityId: z.string().min(1),
+    attributes: z.array(entityAttributeSchema),
   })),
   claims: z.array(z.object({
     id: z.string().min(1),
@@ -44,7 +72,7 @@ export const researchResultSchema = z.object({
 export const researchJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['summary', 'identityAssessment', 'candidateEntities', 'claims', 'questions', 'sources', 'warnings'],
+  required: ['summary', 'identityAssessment', 'candidateEntities', 'entityUpdates', 'claims', 'questions', 'sources', 'warnings'],
   properties: {
     summary: { type: 'string' },
     identityAssessment: { type: 'string' },
@@ -53,7 +81,7 @@ export const researchJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'type', 'title', 'subtitle', 'summary', 'occurredAt'],
+        required: ['id', 'type', 'title', 'subtitle', 'summary', 'occurredAt', 'attributes'],
         properties: {
           id: { type: 'string' },
           type: { type: 'string', enum: entityTypes },
@@ -61,6 +89,19 @@ export const researchJsonSchema = {
           subtitle: { type: 'string' },
           summary: { type: 'string' },
           occurredAt: { type: 'string' },
+          attributes: { type: 'array', items: entityAttributeJsonSchema },
+        },
+      },
+    },
+    entityUpdates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['entityId', 'attributes'],
+        properties: {
+          entityId: { type: 'string' },
+          attributes: { type: 'array', items: entityAttributeJsonSchema },
         },
       },
     },

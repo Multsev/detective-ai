@@ -15,6 +15,7 @@ describe('Codex research stream', () => {
       summary: 'Найдена проверяемая связь.',
       identityAssessment: 'Идентичность требует подтверждения.',
       candidateEntities: [],
+      entityUpdates: [],
       claims: [],
       questions: [],
       sources: [],
@@ -66,6 +67,9 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('publishedAt');
       expect(prompt).toContain('Не подменяй дату события датой статьи');
       expect(prompt).toContain('Уже покрытые данные');
+      expect(prompt).toContain('Каталог стандартных реквизитов');
+      expect(prompt).toContain('entityUpdates');
+      expect(prompt).toContain('ИНН');
       expect(prompt).toContain('reviewedSources');
       expect(prompt).toContain('Новых сведений по сравнению с материалами дела не найдено');
       expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');

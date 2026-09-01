@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, CalendarDays, ContactRound, Crosshair, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
-import { IconButton, Select } from '@operator-ui/framework';
-import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
+import { ArrowUpRight, Bot, CalendarDays, ContactRound, Crosshair, FileText, FileUp, Globe2, IdCard, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { Button, IconButton, Select, TextField } from '@operator-ui/framework';
+import type { CaseFact, EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
+import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { formatTemporalDate, presentSource, type EntityProvenance } from '../lib/entityProvenance';
 
@@ -15,12 +16,13 @@ interface InspectorProps {
   researchSubject?: InvestigationEntity;
   provenance?: EntityProvenance;
   onAddFact: (kind: CaseFact['kind'], text: string) => void;
+  onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
   onAddRelation: (targetId: string, label: string) => void;
   onResearch: (question: string, file?: File) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, provenance, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, provenance, onAddFact, onAddAttribute, onAddRelation, onResearch, onClose }: InspectorProps) {
   const [entryText, setEntryText] = useState('');
   const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
   const [researchQuestion, setResearchQuestion] = useState('');
@@ -30,12 +32,16 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [targetId, setTargetId] = useState('');
   const [relationLabel, setRelationLabel] = useState('');
+  const [attributeKey, setAttributeKey] = useState('');
+  const [attributeValue, setAttributeValue] = useState('');
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
 
   useEffect(() => {
     setResearchMode('web');
     setResearchFile(undefined);
     setFileError(undefined);
+    setAttributeKey('');
+    setAttributeValue('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [entity?.id]);
 
@@ -83,6 +89,8 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
 
   const relatedEntities = allEntities.filter((item) => item.id !== entity.id);
   const entityDate = formatTemporalDate(entity.occurredAt);
+  const attributeDefinitions = getEntityAttributeDefinitions(entity.type);
+  const selectedAttributeDefinition = attributeDefinitions.find((definition) => definition.key === attributeKey) ?? attributeDefinitions[0];
 
   function submitEntry() {
     const text = entryText.trim();
@@ -106,6 +114,36 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
           : <span title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}</span>)
           : <span title={provenance.primary.title}>{provenance.primary.label}</span>}
       </div>}
+
+      <section className="inspector-section entity-attributes-section">
+        <div className="section-heading"><h3>Реквизиты</h3><span>{entity.attributes?.length ?? 0}</span></div>
+        <div className="entity-attribute-list">
+          {(entity.attributes ?? []).map((attribute) => {
+            const href = getAttributeHref(attribute);
+            const attributeSources = attribute.sourceIds.map((id) => sourceById.get(id)).filter((source): source is SourceReference => Boolean(source));
+            const sourceTitle = attributeSources.map((source) => source.title).join(', ') || (attribute.createdBy === 'user' ? 'Добавлено вручную' : attribute.createdBy === 'integration' ? 'Личная интеграция' : 'Источник не указан');
+            const primarySource = attributeSources[0];
+            return <div className="entity-attribute-row" key={attribute.id}>
+              <span>{attribute.label}</span>
+              {href ? <a href={href} target={href.startsWith('http') ? '_blank' : undefined} rel="noreferrer" title={attribute.value}>{attribute.value}<ArrowUpRight size={10} /></a> : <strong title={attribute.value}>{attribute.value}</strong>}
+              {primarySource && primarySource.kind !== 'uploaded_file' && primarySource.kind !== 'google_contact'
+                ? <a className="entity-attribute-source" href={primarySource.url} target="_blank" rel="noreferrer" title={sourceTitle}>{primarySource.publisher || primarySource.title}<ArrowUpRight size={8} /></a>
+                : <small title={sourceTitle}>{sourceTitle}</small>}
+            </div>;
+          })}
+          {(entity.attributes?.length ?? 0) === 0 && <p className="muted-copy">Реквизиты пока не заполнены. Codex начнёт исследование с их поиска.</p>}
+        </div>
+        <div className="attribute-composer">
+          <Select aria-label="Тип реквизита" value={selectedAttributeDefinition.key} onChange={(event) => setAttributeKey(event.target.value)}>
+            {attributeDefinitions.map((definition) => <option value={definition.key} key={definition.key}>{definition.label}</option>)}
+          </Select>
+          <TextField aria-label="Значение реквизита" value={attributeValue} onChange={(event) => setAttributeValue(event.target.value)} placeholder="Введите значение" />
+          <Button disabled={!attributeValue.trim()} onClick={() => {
+            onAddAttribute({ ...selectedAttributeDefinition, value: attributeValue.trim() });
+            setAttributeValue('');
+          }}><IdCard size={13} />Добавить</Button>
+        </div>
+      </section>
 
       <section className="research-box">
         <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>

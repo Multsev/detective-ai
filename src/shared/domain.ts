@@ -71,6 +71,38 @@ export interface CaseFact {
   createdBy: 'user' | 'ai';
 }
 
+export const entityAttributeKinds = [
+  'phone', 'email', 'social', 'website', 'tax_id', 'registration_id', 'bank_name',
+  'bank_bic', 'bank_account', 'correspondent_account', 'employee_count', 'address',
+  'date', 'identifier', 'text',
+] as const;
+export type EntityAttributeKind = (typeof entityAttributeKinds)[number];
+
+export interface EntityAttribute {
+  id: string;
+  key: string;
+  label: string;
+  value: string;
+  kind: EntityAttributeKind;
+  sourceIds: string[];
+  createdBy: 'user' | 'ai' | 'integration';
+  confidence: number;
+}
+
+export interface ResearchEntityAttribute {
+  key: string;
+  label: string;
+  value: string;
+  kind: EntityAttributeKind;
+  sourceIds: string[];
+  confidence: number;
+}
+
+export interface ResearchEntityUpdate {
+  entityId: string;
+  attributes: ResearchEntityAttribute[];
+}
+
 export interface InvestigationEntity {
   id: string;
   type: EntityType;
@@ -79,6 +111,7 @@ export interface InvestigationEntity {
   summary: string;
   position: { x: number; y: number };
   facts: CaseFact[];
+  attributes?: EntityAttribute[];
   sourceIds?: string[];
   createdBy?: 'user' | 'ai';
   occurredAt?: string;
@@ -133,6 +166,7 @@ export interface ResearchCandidateEntity {
   subtitle: string;
   summary: string;
   occurredAt: string;
+  attributes?: ResearchEntityAttribute[];
 }
 
 export interface ResearchClaim {
@@ -157,6 +191,7 @@ export interface ResearchResult {
   summary: string;
   identityAssessment: string;
   candidateEntities: ResearchCandidateEntity[];
+  entityUpdates?: ResearchEntityUpdate[];
   claims: ResearchClaim[];
   questions: ResearchQuestion[];
   sources: SourceReference[];
