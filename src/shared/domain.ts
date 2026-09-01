@@ -130,6 +130,50 @@ export interface InvestigationRelation {
   occurredAt?: string;
 }
 
+export type CaseMaterialKind = 'pdf' | 'markdown' | 'note';
+export type CaseMaterialStatus = 'pending' | 'processing' | 'processed' | 'changed' | 'error';
+
+export interface CaseMaterial {
+  id: string;
+  entityId: string;
+  kind: CaseMaterialKind;
+  name: string;
+  mimeType: 'application/pdf' | 'text/markdown';
+  fingerprint: string;
+  storageKey?: string;
+  content?: string;
+  size: number;
+  revision: number;
+  status: CaseMaterialStatus;
+  createdAt: string;
+  updatedAt: string;
+  processedRevision?: number;
+  processedAt?: string;
+  researchRunId?: string;
+  errorMessage?: string;
+}
+
+export type ResearchRunStatus = 'running' | 'completed' | 'error';
+
+export interface ResearchRun {
+  id: string;
+  mode: ResearchMode;
+  entityIds: string[];
+  question: string;
+  includeWeb: boolean;
+  status: ResearchRunStatus;
+  startedAt: string;
+  finishedAt?: string;
+  inputMaterials: Array<{ materialId: string; revision: number; fingerprint: string }>;
+  checkedUrls: string[];
+  attemptedQueries: string[];
+  nextSteps: string[];
+  addedEntityIds: string[];
+  addedRelationIds: string[];
+  summary: string;
+  errorMessage?: string;
+}
+
 export interface InvestigationCase {
   id: string;
   caseNumber: number;
@@ -141,6 +185,8 @@ export interface InvestigationCase {
   entities: InvestigationEntity[];
   relations: InvestigationRelation[];
   sources: SourceReference[];
+  materials?: CaseMaterial[];
+  researchRuns?: ResearchRun[];
   updatedAt: string;
 }
 

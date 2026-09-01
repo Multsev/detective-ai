@@ -1,4 +1,10 @@
-import type { CaseSummary, CreateCaseInput, GoogleContact, GoogleIntegrationStatus, HealthStatus, InvestigationCase, McpSettings, McpSettingsView, ResearchStreamEvent } from '../../shared/domain';
+import type { CaseMaterial, CaseSummary, CreateCaseInput, GoogleContact, GoogleIntegrationStatus, HealthStatus, InvestigationCase, McpSettings, McpSettingsView, ResearchStreamEvent } from '../../shared/domain';
+
+export interface MaterialMutationResult {
+  investigationCase: InvestigationCase;
+  material: CaseMaterial;
+  duplicate: boolean;
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -50,6 +56,19 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(investigationCase),
   }),
+  async addFileMaterial(caseId: string, entityId: string, file: File): Promise<MaterialMutationResult> {
+    const body = new FormData();
+    body.set('file', file);
+    const response = await fetch(`/api/cases/${caseId}/entities/${entityId}/materials/file`, { method: 'POST', body });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? 'Не удалось добавить материал.');
+    return payload as MaterialMutationResult;
+  },
+  addNoteMaterial: (caseId: string, entityId: string, name: string, content: string) => request<MaterialMutationResult>(`/api/cases/${caseId}/entities/${entityId}/materials/note`, {
+    method: 'POST',
+    body: JSON.stringify({ name, content }),
+  }),
+  removeMaterial: (caseId: string, materialId: string) => request<InvestigationCase>(`/api/cases/${caseId}/materials/${materialId}`, { method: 'DELETE' }),
   async researchInformationStream(caseId: string, entityId: string, question: string, onEvent: (event: ResearchStreamEvent) => void) {
     const response = await fetch('/api/research/information/stream', {
       method: 'POST',
@@ -65,6 +84,14 @@ export const api = {
     body.set('question', question);
     body.set('file', file);
     await consumeResearchStream(await fetch('/api/research/file/stream', { method: 'POST', body }), onEvent);
+  },
+  async researchMaterialStream(caseId: string, entityId: string, materialId: string, question: string, onEvent: (event: ResearchStreamEvent) => void) {
+    const response = await fetch('/api/research/material/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId, entityId, materialId, question }),
+    });
+    await consumeResearchStream(response, onEvent);
   },
   async researchRelationshipsStream(caseId: string, entityIds: string[], question: string, onEvent: (event: ResearchStreamEvent) => void) {
     const response = await fetch('/api/research/relationships/stream', {

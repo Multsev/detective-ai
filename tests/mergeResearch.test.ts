@@ -171,7 +171,8 @@ describe('interactive graph connections', () => {
 
 describe('entity removal', () => {
   it('removes the card and every incoming or outgoing relation', () => {
-    const investigationCase = createSeedCase();
+    const seed = createSeedCase();
+    const investigationCase = { ...seed, materials: [{ id: 'material-1', entityId: seed.entities[0].id, kind: 'note' as const, name: 'Заметка', mimeType: 'text/markdown' as const, fingerprint: 'abc', content: 'Факт', size: 4, revision: 1, status: 'pending' as const, createdAt: '', updatedAt: '' }] };
     const entityId = investigationCase.entities[0].id;
     const unrelatedRelation = investigationCase.relations.find((relation) => relation.sourceId !== entityId && relation.targetId !== entityId);
 
@@ -179,6 +180,7 @@ describe('entity removal', () => {
 
     expect(result.entities.some((entity) => entity.id === entityId)).toBe(false);
     expect(result.relations.some((relation) => relation.sourceId === entityId || relation.targetId === entityId)).toBe(false);
+    expect(result.materials).toEqual([]);
     if (unrelatedRelation) expect(result.relations).toContainEqual(unrelatedRelation);
   });
 });

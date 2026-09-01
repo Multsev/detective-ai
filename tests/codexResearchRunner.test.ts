@@ -45,6 +45,7 @@ process.stdin.on('end', () => {
     try {
       const investigationCase = createSeedCase();
       investigationCase.researchSubjectEntityId = 'anna-lebedeva';
+      investigationCase.researchRuns = [{ id: 'previous-run', mode: 'information', entityIds: ['sergey-volkov'], question: 'Проверь официальный сайт', includeWeb: true, status: 'completed', startedAt: '2026-08-31T10:00:00.000Z', finishedAt: '2026-08-31T10:05:00.000Z', inputMaterials: [], checkedUrls: ['https://already.example/source'], attemptedQueries: ['официальный сайт'], nextSteps: ['Проверить реестр'], addedEntityIds: [], addedRelationIds: [], summary: 'Проверены основные источники.' }];
       const events: string[] = [];
       const runner = new CodexResearchRunner(executable, directory);
       const result = await runner.investigateInformation(
@@ -73,6 +74,9 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('entityUpdates');
       expect(prompt).toContain('ИНН');
       expect(prompt).toContain('reviewedSources');
+      expect(prompt).toContain('previousRuns');
+      expect(prompt).toContain('https://already.example/source');
+      expect(prompt).toContain('Проверить реестр');
       expect(prompt).toContain('Новых сведений по сравнению с материалами дела не найдено');
       expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');
 

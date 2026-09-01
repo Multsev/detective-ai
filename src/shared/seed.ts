@@ -10,6 +10,8 @@ export function createSeedCase(): InvestigationCase {
     title: 'Дело № 0001 — Иван Морозов',
     subtitle: '«Чёрный портфель» · учебное расследование',
     updatedAt: new Date().toISOString(),
+    materials: [],
+    researchRuns: [],
     sources: [
       {
         id: 'source-user-interview',

@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { CaseSummary, CreateCaseInput, InvestigationCase, InvestigationEntity } from '../../shared/domain.js';
 import { createSeedCase } from '../../shared/seed.js';
 import { normalizeCaseSubject } from '../../shared/caseSubject.js';
+import { normalizeResearchMemory } from '../../shared/researchMemory.js';
 
 function slugify(value: string): string {
   const transliteration: Record<string, string> = {
@@ -57,7 +58,7 @@ export class CaseStore {
     await this.ensureInitialized();
     const resolvedId = id ?? (await this.list())[0]?.id;
     if (!resolvedId || !isSafeCaseId(resolvedId)) throw new Error('Некорректный идентификатор дела.');
-    return normalizeCaseSubject(JSON.parse(await readFile(this.filePath(resolvedId), 'utf8')) as InvestigationCase);
+    return normalizeResearchMemory(normalizeCaseSubject(JSON.parse(await readFile(this.filePath(resolvedId), 'utf8')) as InvestigationCase));
   }
 
   async create(input: CreateCaseInput): Promise<InvestigationCase> {
@@ -89,6 +90,8 @@ export class CaseStore {
       entities: [focusEntity],
       relations: [],
       sources: [],
+      materials: [],
+      researchRuns: [],
       updatedAt: new Date().toISOString(),
     });
   }
@@ -144,7 +147,7 @@ export class CaseStore {
   }
 
   private async writeCase(investigationCase: InvestigationCase): Promise<InvestigationCase> {
-    const savedCase = { ...normalizeCaseSubject(investigationCase), updatedAt: new Date().toISOString() };
+    const savedCase = { ...normalizeResearchMemory(normalizeCaseSubject(investigationCase)), updatedAt: new Date().toISOString() };
     await mkdir(this.casesDirectory, { recursive: true });
     const targetPath = this.filePath(savedCase.id);
     const temporaryPath = `${targetPath}.tmp`;

@@ -59,6 +59,7 @@ export function removeEntityFromCase(investigationCase: InvestigationCase, entit
     ...investigationCase,
     entities: investigationCase.entities.filter((entity) => entity.id !== entityId),
     relations: investigationCase.relations.filter((relation) => relation.sourceId !== entityId && relation.targetId !== entityId),
+    materials: (investigationCase.materials ?? []).filter((material) => material.entityId !== entityId),
     defaultSubjectEntityId: investigationCase.defaultSubjectEntityId === entityId ? undefined : investigationCase.defaultSubjectEntityId,
     researchSubjectEntityId: investigationCase.researchSubjectEntityId === entityId ? undefined : investigationCase.researchSubjectEntityId,
   });

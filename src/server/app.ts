@@ -7,6 +7,7 @@ import { detectCodex } from './codex/codexDetector.js';
 import { CaseStore } from './storage/caseStore.js';
 import { CodexResearchRunner } from './research/codexResearchRunner.js';
 import { McpSettingsStore } from './storage/mcpSettingsStore.js';
+import { CaseMaterialStore } from './storage/caseMaterialStore.js';
 import { DocumentExtractionError, extractResearchDocument, maximumResearchFileBytes } from './research/documentExtractor.js';
 import { GoogleContactsService } from './google/googleContactsService.js';
 import { registerGoogleContactsRoutes } from './google/googleContactsRoutes.js';
@@ -33,9 +34,19 @@ const mcpSettingsInputSchema = z.object({
   updatedAt: z.string().default(''),
 });
 
-export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSettingsStore; googleContactsService?: GoogleContactsService }) {
+const noteMaterialSchema = z.object({
+  name: z.string().trim().max(160).default('Заметка'),
+  content: z.string().trim().min(1, 'Введите текст заметки.').max(120_000),
+});
+
+const materialResearchRequestSchema = researchRequestSchema.extend({
+  materialId: z.string().min(1),
+});
+
+export function createApp(options: { store: CaseStore; materialStore?: CaseMaterialStore; mcpSettingsStore?: McpSettingsStore; googleContactsService?: GoogleContactsService }) {
   const app = express();
   const mcpSettingsStore = options.mcpSettingsStore ?? new McpSettingsStore();
+  const materialStore = options.materialStore ?? new CaseMaterialStore();
   const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maximumResearchFileBytes, files: 1, fields: 4 } });
   app.use(express.json({ limit: '2mb' }));
   registerGoogleContactsRoutes(app, options.googleContactsService ?? new GoogleContactsService());
@@ -107,6 +118,72 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
         return;
       }
       response.json(await options.store.save(investigationCase));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/cases/:caseId/entities/:entityId/materials/file', documentUpload.single('file'), async (request, response, next) => {
+    try {
+      if (!request.file) {
+        response.status(400).json({ error: 'Выберите PDF или Markdown-файл.' });
+        return;
+      }
+      const caseId = String(request.params.caseId);
+      const entityId = String(request.params.entityId);
+      const investigationCase = await options.store.load(caseId);
+      if (!investigationCase.entities.some((entity) => entity.id === entityId)) {
+        response.status(404).json({ error: 'Карточка для материала не найдена.' });
+        return;
+      }
+      const extracted = await extractResearchDocument({ originalName: request.file.originalname, mimeType: request.file.mimetype, buffer: request.file.buffer });
+      const existing = (investigationCase.materials ?? []).find((material) => material.entityId === entityId && material.fingerprint === extracted.sha256);
+      if (existing) {
+        response.json({ investigationCase, material: existing, duplicate: true });
+        return;
+      }
+      const material = await materialStore.storeFile(caseId, entityId, {
+        originalName: extracted.fileName,
+        mimeType: extracted.mediaType,
+        buffer: request.file.buffer,
+      });
+      const savedCase = await options.store.save({ ...investigationCase, materials: [...(investigationCase.materials ?? []), material] });
+      response.status(201).json({ investigationCase: savedCase, material, duplicate: false });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/cases/:caseId/entities/:entityId/materials/note', async (request, response, next) => {
+    try {
+      const input = noteMaterialSchema.parse(request.body);
+      const investigationCase = await options.store.load(request.params.caseId);
+      if (!investigationCase.entities.some((entity) => entity.id === request.params.entityId)) {
+        response.status(404).json({ error: 'Карточка для заметки не найдена.' });
+        return;
+      }
+      const material = materialStore.createNote(request.params.entityId, input.name, input.content);
+      const existing = (investigationCase.materials ?? []).find((candidate) => candidate.entityId === request.params.entityId && candidate.fingerprint === material.fingerprint);
+      if (existing) {
+        response.json({ investigationCase, material: existing, duplicate: true });
+        return;
+      }
+      const savedCase = await options.store.save({ ...investigationCase, materials: [...(investigationCase.materials ?? []), material] });
+      response.status(201).json({ investigationCase: savedCase, material, duplicate: false });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/cases/:caseId/materials/:materialId', async (request, response, next) => {
+    try {
+      const investigationCase = await options.store.load(request.params.caseId);
+      const materials = (investigationCase.materials ?? []).filter((material) => material.id !== request.params.materialId);
+      if (materials.length === (investigationCase.materials ?? []).length) {
+        response.status(404).json({ error: 'Материал не найден.' });
+        return;
+      }
+      response.json(await options.store.save({ ...investigationCase, materials }));
     } catch (error) {
       next(error);
     }
@@ -201,6 +278,45 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
         response.end();
       } else {
         response.status(error instanceof z.ZodError ? 400 : 500).json({ error: message });
+      }
+    }
+  });
+
+  app.post('/api/research/material/stream', async (request, response) => {
+    try {
+      const { caseId, entityId, materialId, question } = materialResearchRequestSchema.parse(request.body);
+      const investigationCase = await options.store.load(caseId);
+      const focusEntity = investigationCase.entities.find((entity) => entity.id === entityId);
+      const material = (investigationCase.materials ?? []).find((candidate) => candidate.id === materialId && candidate.entityId === entityId);
+      if (!focusEntity || !material) {
+        response.status(404).json({ error: 'Карточка или материал для исследования не найдены.' });
+        return;
+      }
+      const codex = await detectCodex();
+      if (!codex.ready) {
+        response.status(503).json({ error: codex.installed ? 'Codex CLI найден, но требуется авторизация.' : 'Codex CLI не найден. Анализ материалов отключён.' });
+        return;
+      }
+      const buffer = await materialStore.read(material);
+      const document = await extractResearchDocument({ originalName: material.kind === 'note' ? `${material.name}.md` : material.name, mimeType: material.mimeType, buffer });
+      response.status(200);
+      response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-cache, no-transform');
+      response.setHeader('X-Accel-Buffering', 'no');
+      response.flushHeaders();
+      const emit = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
+      emit({ type: 'status', stage: 'extracting', message: `Материал «${material.name}» подготовлен, начинаю анализ.` });
+      if (document.truncated) emit({ type: 'status', stage: 'warning', message: 'Документ очень большой: анализируется первые 180 000 символов.' });
+      const runner = new CodexResearchRunner(codex.path, process.cwd(), await mcpSettingsStore.load());
+      emit({ type: 'result', result: await runner.investigateInformation(focusEntity, investigationCase, question, emit, document) });
+      response.end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка анализа материала.';
+      if (response.headersSent) {
+        response.write(`${JSON.stringify({ type: 'error', message })}\n`);
+        response.end();
+      } else {
+        response.status(error instanceof z.ZodError || error instanceof DocumentExtractionError ? 400 : 500).json({ error: message });
       }
     }
   });

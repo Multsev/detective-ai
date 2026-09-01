@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, CalendarDays, ContactRound, FileText, IdCard, Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, CalendarDays, ContactRound, FileText, FileUp, IdCard, Plus, Search, StickyNote, Trash2 } from 'lucide-react';
 import { Button, IconButton, PlainTextEditor, Select, TextField } from '../ui';
-import type { EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
+import type { CaseMaterial, EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, ResearchRun, SourceReference } from '../../shared/domain';
 import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { formatTemporalDate, type EntityProvenance } from '../lib/entityProvenance';
@@ -13,21 +13,37 @@ interface InspectorProps {
   sources: SourceReference[];
   research?: EntityResearchState;
   provenance?: EntityProvenance;
+  materials: CaseMaterial[];
+  researchRuns: ResearchRun[];
   onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
+  onAddFileMaterial: (file: File) => void;
+  onAddNoteMaterial: (name: string, content: string) => void;
+  onRemoveMaterial: (materialId: string) => void;
   onUpdateRelation: (input: { label: string; explanation: string }) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, research, provenance, onAddAttribute, onUpdateRelation, onClose }: InspectorProps) {
+const materialStatusLabels: Record<CaseMaterial['status'], string> = {
+  pending: 'Новое', processing: 'Обрабатывается', processed: 'Обработано', changed: 'Изменено', error: 'Ошибка',
+};
+
+export function Inspector({ entity, relation, allEntities, sources, research, provenance, materials, researchRuns, onAddAttribute, onAddFileMaterial, onAddNoteMaterial, onRemoveMaterial, onUpdateRelation, onClose }: InspectorProps) {
   const [relationLabel, setRelationLabel] = useState('');
   const [relationExplanation, setRelationExplanation] = useState('');
   const [attributeKey, setAttributeKey] = useState('');
   const [attributeValue, setAttributeValue] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteName, setNoteName] = useState('Заметка');
+  const [noteContent, setNoteContent] = useState('');
+  const materialFileInput = useRef<HTMLInputElement>(null);
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
 
   useEffect(() => {
     setAttributeKey('');
     setAttributeValue('');
+    setNoteOpen(false);
+    setNoteName('Заметка');
+    setNoteContent('');
   }, [entity?.id]);
 
   useEffect(() => {
@@ -132,6 +148,43 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
           }}><IdCard size={13} />Добавить</Button>
         </div>
       </section>
+
+      <details className="inspector-section material-section">
+        <summary><span>Материалы</span><small>{materials.length}{materials.some((material) => material.status !== 'processed') ? ` · ${materials.filter((material) => material.status !== 'processed').length} новых` : ''}</small></summary>
+        <div className="material-drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+          event.preventDefault();
+          for (const file of event.dataTransfer.files) onAddFileMaterial(file);
+        }}>
+          <input ref={materialFileInput} type="file" multiple accept=".pdf,.md,.markdown,application/pdf,text/markdown" onChange={(event) => {
+            for (const file of event.target.files ?? []) onAddFileMaterial(file);
+            event.currentTarget.value = '';
+          }} />
+          <FileUp size={15} /><span>Перетащите PDF или Markdown</span><Button onClick={() => materialFileInput.current?.click()}>Выбрать</Button>
+        </div>
+        <div className="material-toolbar"><Button onClick={() => setNoteOpen((current) => !current)}><Plus size={12} />Заметка</Button></div>
+        {noteOpen && <div className="material-note-composer">
+          <TextField value={noteName} onChange={(event) => setNoteName(event.target.value)} placeholder="Название заметки" />
+          <PlainTextEditor value={noteContent} onChange={(event) => setNoteContent(event.target.value)} placeholder="Факт, наблюдение или исходные сведения" />
+          <footer><Button onClick={() => setNoteOpen(false)}>Отмена</Button><Button variant="primary" disabled={!noteContent.trim()} onClick={() => {
+            onAddNoteMaterial(noteName, noteContent);
+            setNoteContent('');
+            setNoteOpen(false);
+          }}>Добавить</Button></footer>
+        </div>}
+        <div className="material-list">
+          {materials.map((material) => <div className={`material-row is-${material.status}`} key={material.id} title={material.errorMessage}>
+            <span>{material.kind === 'note' ? <StickyNote size={12} /> : <FileText size={12} />}</span>
+            <div><strong>{material.name}</strong><small>{materialStatusLabels[material.status]}{material.processedAt ? ` · ${new Date(material.processedAt).toLocaleString('ru-RU')}` : ''}</small></div>
+            <button className="material-remove" type="button" title={`Удалить материал ${material.name}`} aria-label={`Удалить материал ${material.name}`} onClick={() => onRemoveMaterial(material.id)}><Trash2 size={11} /></button>
+          </div>)}
+          {materials.length === 0 && <p className="muted-copy">Добавьте документы или заметки. При следующем поиске Codex обработает только новые материалы.</p>}
+        </div>
+      </details>
+
+      {researchRuns.length > 0 && <details className="inspector-section research-history-section">
+        <summary><span>История исследований</span><small>{researchRuns.length}</small></summary>
+        <div className="research-history-list">{researchRuns.slice(0, 8).map((run) => <div className={`research-history-row is-${run.status}`} key={run.id}><span>{run.status === 'completed' ? '✓' : run.status === 'error' ? '!' : '…'}</span><div><strong>{run.includeWeb ? 'Материалы и открытые источники' : 'Материалы карточки'}</strong><small>{new Date(run.startedAt).toLocaleString('ru-RU')} · {run.summary || run.errorMessage || 'Выполняется'}</small></div></div>)}</div>
+      </details>}
 
       {research && <section className="research-box"><div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Идёт поиск связи' : 'Идёт поиск информации') : research.status === 'completed' ? 'Исследование завершено' : 'Ошибка исследования'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div></section>}
 

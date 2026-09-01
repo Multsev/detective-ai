@@ -3,6 +3,7 @@ import { Link2, Search } from 'lucide-react';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, appPersistence, IconButton, Menu, MenuBar, SelectionModel, type MenuEntry } from './ui';
 import type {
   CaseSummary,
+  CaseMaterial,
   CreateCaseInput,
   EntityResearchState,
   EntityAttributeKind,
@@ -14,6 +15,7 @@ import type {
   InvestigationCase,
   InvestigationEntity,
   InvestigationRelation,
+  ResearchRun,
   ResearchStreamEvent,
 } from '../shared/domain';
 import { entityTypes, evidenceStatuses } from '../shared/domain';
@@ -39,6 +41,7 @@ import { RenameCaseDialog } from './components/RenameCaseDialog';
 import { ResearchQueueControl } from './components/ResearchQueueControl';
 import { downloadCaseFile, parseCaseFile } from './lib/caseFile';
 import { getDefaultMotionLevel, isMotionLevel, motionDuration, motionDurations, type MotionLevel } from './motion/motionPreferences';
+import { getEntityMaterials, getEntityResearchRuns, getPendingEntityMaterials } from '../shared/researchMemory';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type EntityMotionState = 'updated' | 'no-change' | 'error';
@@ -94,6 +97,7 @@ export function App() {
   const [message, setMessage] = useState<string>();
   const investigationCaseRef = useRef<InvestigationCase | undefined>(undefined);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const materialMutationQueue = useRef<Promise<void>>(Promise.resolve());
   const undoStack = useRef<InvestigationCase[]>([]);
   const redoStack = useRef<InvestigationCase[]>([]);
   const caseFileInput = useRef<HTMLInputElement>(null);
@@ -224,6 +228,27 @@ export function App() {
     if (!current) return;
     await queueCaseSave(current);
     setMessage('Дело сохранено.');
+  }
+
+  function acceptServerCase(savedCase: InvestigationCase) {
+    investigationCaseRef.current = savedCase;
+    setInvestigationCase(savedCase);
+    setCaseSummaries((summaries) => summaries.map((summary) => summary.id === savedCase.id ? {
+      ...summary,
+      title: savedCase.title,
+      subject: savedCase.subject,
+      updatedAt: savedCase.updatedAt,
+      entityCount: savedCase.entities.length,
+      relationCount: savedCase.relations.length,
+    } : summary));
+    setSaveState('saved');
+  }
+
+  async function persistResearchCase(next: InvestigationCase): Promise<InvestigationCase> {
+    investigationCaseRef.current = next;
+    setInvestigationCase(next);
+    const saved = await queueCaseSave(next) as InvestigationCase;
+    return saved;
   }
 
   function undo() {
@@ -368,6 +393,54 @@ export function App() {
     }));
   }
 
+  async function addFileMaterial(file: File) {
+    const entityId = inspectorEntityId;
+    if (!entityId) return;
+    if (file.size > 12 * 1024 * 1024) {
+      setMessage(`Файл «${file.name}» больше 12 МБ.`);
+      return;
+    }
+    const task = materialMutationQueue.current.catch(() => undefined).then(async () => {
+      const current = investigationCaseRef.current;
+      if (!current) return;
+      await queueCaseSave(current);
+      const result = await api.addFileMaterial(current.id, entityId, file);
+      acceptServerCase(result.investigationCase);
+      setMessage(result.duplicate ? `Материал «${file.name}» уже прикреплён к карточке.` : `Материал «${file.name}» добавлен и ожидает обработки.`);
+    });
+    materialMutationQueue.current = task;
+    try { await task; } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось добавить материал.'); }
+  }
+
+  async function addNoteMaterial(name: string, content: string) {
+    const entityId = inspectorEntityId;
+    if (!entityId || !content.trim()) return;
+    const task = materialMutationQueue.current.catch(() => undefined).then(async () => {
+      const current = investigationCaseRef.current;
+      if (!current) return;
+      await queueCaseSave(current);
+      const result = await api.addNoteMaterial(current.id, entityId, name, content);
+      acceptServerCase(result.investigationCase);
+      setMessage(result.duplicate ? 'Такая заметка уже добавлена.' : 'Заметка добавлена и будет обработана при следующем поиске.');
+    });
+    materialMutationQueue.current = task;
+    try { await task; } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось добавить заметку.'); }
+  }
+
+  async function removeMaterial(materialId: string) {
+    const material = investigationCaseRef.current?.materials?.find((candidate) => candidate.id === materialId);
+    if (!material || !window.confirm(`Удалить материал «${material.name}» из карточки?`)) return;
+    const task = materialMutationQueue.current.catch(() => undefined).then(async () => {
+      const current = investigationCaseRef.current;
+      if (!current) return;
+      await queueCaseSave(current);
+      acceptServerCase(await api.removeMaterial(current.id, materialId));
+      setMessage(`Материал «${material.name}» удалён.`);
+    });
+    materialMutationQueue.current = task;
+    try { await task; } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось удалить материал.'); }
+  }
+
   function connectCards(sourceId: string, targetId: string) {
     const current = investigationCaseRef.current;
     if (!current) return;
@@ -394,7 +467,7 @@ export function App() {
     setMessage('Свойства связи сохранены.');
   }
 
-  async function findInformation(question: string, focusEntityId = selectedEntityId, file?: File) {
+  async function findInformation(question: string, focusEntityId = selectedEntityId, includeWeb = true) {
     const focusEntity = investigationCase?.entities.find((entity) => entity.id === focusEntityId);
     if (!focusEntityId || !focusEntity || !investigationCase) {
       setMessage('Сначала выберите карточку, о которой нужно найти информацию.');
@@ -409,41 +482,135 @@ export function App() {
       setMessage(`Исследование карточки «${focusEntity.title}» уже выполняется.`);
       return;
     }
-    const normalizedQuestion = question.trim() || (file
-      ? 'Извлеки из документа новые проверяемые сведения и реквизиты выбранного объекта.'
-      : 'Найди новые проверяемые сведения об объекте и заполни доступные реквизиты карточки.');
+    const pendingMaterials = getPendingEntityMaterials(investigationCase, focusEntityId);
+    if (pendingMaterials.length === 0 && !includeWeb) {
+      setMessage(`У карточки «${focusEntity.title}» нет новых материалов.`);
+      return;
+    }
+    const normalizedQuestion = question.trim() || 'Найди новые проверяемые сведения об объекте и заполни доступные реквизиты карточки.';
+    const runId = `research-${crypto.randomUUID()}`;
+    const startedAt = new Date().toISOString();
+    const run: ResearchRun = {
+      id: runId,
+      mode: 'information',
+      entityIds: [focusEntityId],
+      question: normalizedQuestion,
+      includeWeb,
+      status: 'running',
+      startedAt,
+      inputMaterials: pendingMaterials.map((material) => ({ materialId: material.id, revision: material.revision, fingerprint: material.fingerprint })),
+      checkedUrls: [],
+      attemptedQueries: includeWeb ? [normalizedQuestion] : [],
+      nextSteps: [],
+      addedEntityIds: [],
+      addedRelationIds: [],
+      summary: '',
+    };
     const initialResearch: EntityResearchState = {
-      entityId: focusEntityId, mode: 'information', entityIds: [focusEntityId], status: 'running', stage: 'starting', message: file ? `Загружаю файл «${file.name}».` : 'Ищу информацию и реквизиты объекта.', question: normalizedQuestion, startedAt: new Date().toISOString(), source: file ? 'file' : 'web', fileName: file?.name,
+      entityId: focusEntityId, mode: 'information', entityIds: [focusEntityId], status: 'running', stage: 'starting', message: pendingMaterials.length ? `Новых материалов: ${pendingMaterials.length}.` : 'Продолжаю поиск с предыдущей контрольной точки.', question: normalizedQuestion, startedAt, source: pendingMaterials.length ? 'file' : 'web', fileName: pendingMaterials[0]?.name,
     };
     entitySelection.select(focusEntityId, investigationCase.entities.map((entity) => entity.id));
     setSelectedRelationId(undefined);
     setResearchByEntityId((current) => ({ ...current, [focusEntityId]: initialResearch }));
     setMessage(undefined);
+    const totals = { attributes: 0, entities: 0, relations: 0, sources: 0, questions: 0, updatedRelations: 0 };
+    const addedEntityIds = new Set<string>();
+    const addedRelationIds = new Set<string>();
+    const checkedUrls = new Set<string>();
+    const nextSteps = new Set<string>();
+    const summaries: string[] = [];
+    let activeMaterialId: string | undefined;
     try {
-      let streamedResult: EntityResearchState['result'];
-      const onEvent = (event: ResearchStreamEvent) => {
-        if (event.type === 'status') {
-          setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), stage: event.stage, message: event.message } }));
-        }
-        if (event.type === 'result') streamedResult = event.result;
+      const initialCase = investigationCaseRef.current ?? investigationCase;
+      await persistResearchCase({
+        ...initialCase,
+        materials: (initialCase.materials ?? []).map((material) => pendingMaterials.some((candidate) => candidate.id === material.id) ? { ...material, status: 'processing' as const, updatedAt: startedAt, errorMessage: undefined } : material),
+        researchRuns: [...(initialCase.researchRuns ?? []), run].slice(-100),
+      });
+
+      const consumeResult = async (start: (onEvent: (event: ResearchStreamEvent) => void) => Promise<void>, material?: CaseMaterial) => {
+        let streamedResult: EntityResearchState['result'];
+        const onEvent = (event: ResearchStreamEvent) => {
+          if (event.type === 'status') setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), stage: event.stage, message: event.message, fileName: material?.name } }));
+          if (event.type === 'result') streamedResult = event.result;
+        };
+        await start(onEvent);
+        if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
+        const latestCase = investigationCaseRef.current ?? investigationCase;
+        const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
+        const previousEntityIds = new Set(latestCase.entities.map((entity) => entity.id));
+        const previousRelationIds = new Set(latestCase.relations.map((relation) => relation.id));
+        const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
+        outcome.investigationCase.entities.filter((entity) => !previousEntityIds.has(entity.id)).forEach((entity) => addedEntityIds.add(entity.id));
+        outcome.investigationCase.relations.filter((relation) => !previousRelationIds.has(relation.id)).forEach((relation) => addedRelationIds.add(relation.id));
+        outcome.result.sources.map((source) => source.url).filter((url) => /^https?:\/\//.test(url)).forEach((url) => checkedUrls.add(url));
+        outcome.result.questions.forEach((item) => nextSteps.add(item.text));
+        if (outcome.result.summary && !summaries.includes(outcome.result.summary)) summaries.push(outcome.result.summary);
+        totals.attributes += outcome.addedAttributeCount;
+        totals.entities += outcome.addedEntityCount;
+        totals.relations += outcome.addedRelationCount;
+        totals.sources += outcome.addedSourceCount;
+        totals.questions += outcome.addedQuestionCount;
+        totals.updatedRelations += outcome.updatedRelationCount;
+        const completedAt = new Date().toISOString();
+        const nextCase = {
+          ...outcome.investigationCase,
+          materials: (outcome.investigationCase.materials ?? []).map((candidate) => material && candidate.id === material.id ? {
+            ...candidate,
+            status: 'processed' as const,
+            processedRevision: candidate.revision,
+            processedAt: completedAt,
+            updatedAt: completedAt,
+            researchRunId: runId,
+            errorMessage: undefined,
+          } : candidate),
+        };
+        await persistResearchCase(nextCase);
+        return outcome;
       };
-      if (file) await api.researchFileStream(investigationCase.id, focusEntityId, normalizedQuestion, file, onEvent);
-      else await api.researchInformationStream(investigationCase.id, focusEntityId, normalizedQuestion, onEvent);
-      if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
-      const latestCase = investigationCaseRef.current ?? investigationCase;
-      const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
-      const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
-      if (outcome.hasNewInformation) commit(() => outcome.investigationCase);
-      showEntityMotion([focusEntityId], outcome.hasNewInformation ? 'updated' : 'no-change');
+
+      for (const material of pendingMaterials) {
+        activeMaterialId = material.id;
+        setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), stage: 'materials', message: `Анализирую «${material.name}».`, source: 'file', fileName: material.name } }));
+        await consumeResult((onEvent) => api.researchMaterialStream(investigationCase.id, focusEntityId, material.id, normalizedQuestion, onEvent), material);
+        activeMaterialId = undefined;
+      }
+
+      if (includeWeb) {
+        setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), stage: 'searching', message: 'Продолжаю исследование в открытых источниках.', source: 'web', fileName: undefined } }));
+        await consumeResult((onEvent) => api.researchInformationStream(investigationCase.id, focusEntityId, normalizedQuestion, onEvent));
+      }
+
+      const hasNewInformation = totals.attributes + totals.entities + totals.relations + totals.sources + totals.questions + totals.updatedRelations > 0;
+      const finishedAt = new Date().toISOString();
+      const finalCase = investigationCaseRef.current ?? investigationCase;
+      await persistResearchCase({ ...finalCase, researchRuns: (finalCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
+        ...candidate,
+        status: 'completed' as const,
+        finishedAt,
+        checkedUrls: [...checkedUrls],
+        nextSteps: [...nextSteps],
+        addedEntityIds: [...addedEntityIds],
+        addedRelationIds: [...addedRelationIds],
+        summary: summaries.at(-1) ?? (hasNewInformation ? 'Материалы дела дополнены.' : 'Новых сведений не найдено.'),
+      } : candidate) });
+      showEntityMotion([focusEntityId], hasNewInformation ? 'updated' : 'no-change');
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: {
         ...(current[focusEntityId] ?? initialResearch), status: 'completed', stage: 'completed',
-        message: outcome.hasNewInformation
-          ? `Добавлено: ${outcome.addedAttributeCount} реквизитов, ${outcome.addedEntityCount} карточек, ${outcome.addedRelationCount} связей, ${outcome.addedSourceCount} источников, ${outcome.addedQuestionCount} вопросов${outcome.updatedRelationCount ? `; обновлено связей: ${outcome.updatedRelationCount}` : ''}.`
+        message: hasNewInformation
+          ? `Добавлено: ${totals.attributes} реквизитов, ${totals.entities} карточек, ${totals.relations} связей, ${totals.sources} источников, ${totals.questions} вопросов${totals.updatedRelations ? `; обновлено связей: ${totals.updatedRelations}` : ''}.`
           : 'Новой информации об объекте не найдено.',
-        result: outcome.result,
       } }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось найти информацию об объекте.';
+      const failedAt = new Date().toISOString();
+      const latestCase = investigationCaseRef.current ?? investigationCase;
+      const failedCase = {
+        ...latestCase,
+        materials: (latestCase.materials ?? []).map((material) => activeMaterialId === material.id ? { ...material, status: 'error' as const, updatedAt: failedAt, errorMessage } : material.status === 'processing' && pendingMaterials.some((candidate) => candidate.id === material.id) ? { ...material, status: 'pending' as const, updatedAt: failedAt } : material),
+        researchRuns: (latestCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: summaries.at(-1) ?? '' } : candidate),
+      };
+      try { await persistResearchCase(failedCase); } catch { /* Основная ошибка исследования важнее ошибки фиксации статуса. */ }
       showEntityMotion([focusEntityId], 'error');
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), status: 'error', stage: 'error', message: errorMessage } }));
       setMessage(errorMessage);
@@ -837,7 +1004,12 @@ export function App() {
         sources={displayedCase.sources}
         research={inspectorEntity ? researchByEntityId[inspectorEntity.id] : undefined}
         provenance={inspectorEntity ? getEntityProvenance(displayedCase, inspectorEntity) : undefined}
+        materials={inspectorEntity ? getEntityMaterials(displayedCase, inspectorEntity.id) : []}
+        researchRuns={inspectorEntity ? getEntityResearchRuns(displayedCase, inspectorEntity.id) : []}
         onAddAttribute={addAttribute}
+        onAddFileMaterial={(file) => void addFileMaterial(file)}
+        onAddNoteMaterial={(name, content) => void addNoteMaterial(name, content)}
+        onRemoveMaterial={(materialId) => void removeMaterial(materialId)}
         onUpdateRelation={updateSelectedRelation}
         onClose={() => { setInspectorEntityId(undefined); setSelectedRelationId(undefined); }}
       />}
@@ -858,7 +1030,7 @@ export function App() {
         onClose={() => setShowFindRelationships(false)}
         onStart={(entityIds, question) => void findRelationships(entityIds, question)}
       />
-      <FindInformationDialog open={informationDialogEntityIds.length > 0} entities={informationDialogEntities} aiConfigured={health.codex.ready} runningEntityIds={runningEntityIds} onClose={() => setInformationDialogEntityIds([])} onStart={(question, file) => { const ids = [...informationDialogEntityIds]; setInformationDialogEntityIds([]); void Promise.allSettled(ids.map((entityId) => findInformation(question, entityId, file))); }} />
+      <FindInformationDialog open={informationDialogEntityIds.length > 0} entities={informationDialogEntities} materials={investigationCase.materials ?? []} aiConfigured={health.codex.ready} runningEntityIds={runningEntityIds} onClose={() => setInformationDialogEntityIds([])} onStart={(question, includeWeb) => { const ids = [...informationDialogEntityIds]; setInformationDialogEntityIds([]); void Promise.allSettled(ids.map((entityId) => findInformation(question, entityId, includeWeb))); }} />
       <ManualLinkDialog open={showManualLinkDialog} source={linkSource} targets={linkTargets} onClose={() => setShowManualLinkDialog(false)} onCreate={createManualLinks} />
       <RenameCaseDialog open={showRenameCase} title={investigationCase.title} onClose={() => setShowRenameCase(false)} onRename={(title) => { commit((current) => ({ ...current, title })); setShowRenameCase(false); }} />
       <input ref={caseFileInput} className="visually-hidden" type="file" accept=".detective,.json,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCaseFile(file); }} />
