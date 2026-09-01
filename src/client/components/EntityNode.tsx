@@ -31,13 +31,12 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
   const { entity, research, isResearchSubject, provenance, reducedDetail } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
-  const questions = entity.facts.filter((fact) => fact.kind === 'question').length;
   const occurredAtLabel = formatTemporalDate(entity.occurredAt);
   const primaryAttributes = (entity.attributes ?? []).slice(0, 2);
 
   return (
     <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
-      <Handle type="target" position={Position.Left} className="entity-handle" />
+      <Handle type="target" position={Position.Left} className="entity-handle" title="Отпустите здесь, чтобы связать карточки" aria-label="Вход связи" />
       <span className="pushpin" />
       {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}
       <header className="entity-card__header">
@@ -67,11 +66,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
         {research.status === 'running' ? <LoaderCircle size={12} className="spin" /> : research.status === 'completed' ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
         <div><strong>{research.status === 'running' ? 'Codex исследует' : research.status === 'completed' ? 'Исследование готово' : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
       </div>}
-      {!reducedDetail && <footer>
-        <span>{entity.facts.length} факт.</span>
-        {questions > 0 && <span className="question-count">{questions} вопрос.</span>}
-      </footer>}
-      <Handle type="source" position={Position.Right} className="entity-handle" />
+      <Handle type="source" position={Position.Right} className="entity-handle" title="Потяните к другой карточке, чтобы создать связь" aria-label="Создать связь" />
     </article>
   );
 }

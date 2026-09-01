@@ -15,6 +15,39 @@ export interface ResearchMergeOutcome {
   hasNewInformation: boolean;
 }
 
+export interface InteractiveRelationResult {
+  investigationCase: InvestigationCase;
+  relation?: InvestigationRelation;
+  created: boolean;
+  message?: string;
+}
+
+export function connectEntities(
+  investigationCase: InvestigationCase,
+  sourceId: string,
+  targetId: string,
+  relationId: string,
+): InteractiveRelationResult {
+  if (sourceId === targetId) return { investigationCase, created: false, message: 'Карточку нельзя связать саму с собой.' };
+  if (!investigationCase.entities.some((entity) => entity.id === sourceId) || !investigationCase.entities.some((entity) => entity.id === targetId)) {
+    return { investigationCase, created: false, message: 'Одна из соединяемых карточек не найдена.' };
+  }
+  const duplicate = investigationCase.relations.find((relation) => relation.sourceId === sourceId && relation.targetId === targetId && normalizeIdentityText(relation.label) === 'связано');
+  if (duplicate) return { investigationCase, relation: duplicate, created: false, message: 'Такая ручная связь уже существует.' };
+  const relation: InvestigationRelation = {
+    id: relationId,
+    sourceId,
+    targetId,
+    label: 'связано',
+    explanation: 'Связь добавлена перетаскиванием и требует уточнения и проверки источниками.',
+    status: 'user_asserted',
+    confidence: 0.5,
+    sourceIds: [],
+    createdBy: 'user',
+  };
+  return { investigationCase: { ...investigationCase, relations: [...investigationCase.relations, relation] }, relation, created: true };
+}
+
 export function isEntityVisible(entity: InvestigationEntity, visibleTypes: ReadonlySet<EntityType>, search: string): boolean {
   if (!visibleTypes.has(entity.type)) return false;
   if (!search) return true;
@@ -189,7 +222,16 @@ export function mergeResearchResultWithOutcome(
   ]);
   const acceptedSources = [...candidateSourcesById.values()].filter((source) => usedSourceIds.has(source.id));
   const currentFocus = investigationCase.entities.find((entity) => entity.id === focusEntity.id) ?? focusEntity;
-  const existingQuestions = new Set(currentFocus.facts.filter((fact) => fact.kind === 'question').map((fact) => normalizeIdentityText(fact.text)));
+  const existingQuestions = new Set([
+    ...currentFocus.facts.filter((fact) => fact.kind === 'question').map((fact) => normalizeIdentityText(fact.text)),
+    ...candidateEntities.filter((entity) => entity.type === 'question').map((entity) => normalizeIdentityText(entity.title)),
+    ...investigationCase.relations.flatMap((relation) => {
+      if (relation.sourceId !== currentFocus.id && relation.targetId !== currentFocus.id) return [];
+      const counterpartId = relation.sourceId === currentFocus.id ? relation.targetId : relation.sourceId;
+      const counterpart = investigationCase.entities.find((entity) => entity.id === counterpartId && entity.type === 'question');
+      return counterpart ? [normalizeIdentityText(counterpart.title)] : [];
+    }),
+  ]);
   const questionKeys = new Set<string>();
   const acceptedQuestions = result.questions.filter((question) => {
     const key = normalizeIdentityText(question.text);
@@ -219,28 +261,46 @@ export function mergeResearchResultWithOutcome(
     warnings: acceptedWarnings,
   };
 
-  const acceptedQuestionFacts = acceptedQuestions.map((question) => ({
-    id: `question-ai-${stableTextHash(normalizeIdentityText(question.text))}`,
-    kind: 'question' as const,
-    text: question.text,
-    status: 'unknown' as const,
+  const acceptedQuestionEntities = acceptedQuestions.map((question, index): InvestigationEntity => {
+    const hash = stableTextHash(`${focusEntity.id}:${normalizeIdentityText(question.text)}`);
+    return {
+      id: `question-ai-${hash}`,
+      type: 'question',
+      title: question.text,
+      subtitle: question.priority === 'high' ? 'Высокий приоритет' : question.priority === 'medium' ? 'Средний приоритет' : 'Низкий приоритет',
+      summary: question.why,
+      position: { x: focusEntity.position.x - 260 + (index % 3) * 240, y: focusEntity.position.y + 230 + Math.floor(index / 3) * 190 },
+      facts: [],
+      attributes: [],
+      sourceIds: [],
+      createdBy: 'ai',
+    };
+  });
+  const acceptedQuestionRelations = acceptedQuestionEntities.map((entity, index): InvestigationRelation => ({
+    id: `relation-${entity.id}`,
+    sourceId: focusEntity.id,
+    targetId: entity.id,
+    label: 'требует проверки',
+    explanation: acceptedQuestions[index].why || 'Вопрос сформирован в ходе исследования.',
+    status: 'unknown',
     confidence: 0,
     sourceIds: [],
-    createdBy: 'ai' as const,
+    createdBy: 'ai',
   }));
   const mergedCase = {
     ...investigationCase,
     entities: [
       ...investigationCase.entities.map((entity) => {
         const attributes = entityAttributeUpdates.get(entity.id);
-        const facts = entity.id === focusEntity.id && acceptedQuestionFacts.length > 0 ? [...entity.facts, ...acceptedQuestionFacts] : entity.facts;
-        return attributes || facts !== entity.facts ? { ...entity, attributes: attributes ?? entity.attributes, facts } : entity;
+        return attributes ? { ...entity, attributes } : entity;
       }),
       ...acceptedEntities,
+      ...acceptedQuestionEntities,
     ],
     relations: [
       ...investigationCase.relations.map((relation) => relationUpdates.get(relation.id) ?? relation),
       ...acceptedRelations,
+      ...acceptedQuestionRelations,
     ],
     sources: [...investigationCase.sources, ...acceptedSources],
   };

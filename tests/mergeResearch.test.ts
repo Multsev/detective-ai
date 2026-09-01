@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEntityVisible, mergeResearchResult, mergeResearchResultWithOutcome, removeEntityFromCase } from '../src/client/lib/graph.js';
+import { connectEntities, isEntityVisible, mergeResearchResult, mergeResearchResultWithOutcome, removeEntityFromCase } from '../src/client/lib/graph.js';
 import { createSeedCase } from '../src/shared/seed.js';
 
 describe('research proposal merge', () => {
@@ -92,9 +92,24 @@ describe('research proposal merge', () => {
     });
 
     expect(first.addedQuestionCount).toBe(1);
-    expect(first.investigationCase.entities.find((entity) => entity.id === focus.id)?.facts).toContainEqual(expect.objectContaining({ kind: 'question', text: 'Кому принадлежал автомобиль?', createdBy: 'ai' }));
+    const questionEntity = first.investigationCase.entities.find((entity) => entity.type === 'question' && entity.title === 'Кому принадлежал автомобиль?');
+    expect(questionEntity).toMatchObject({ type: 'question', summary: 'Нужно установить владельца.', createdBy: 'ai' });
+    expect(first.investigationCase.relations).toContainEqual(expect.objectContaining({ sourceId: focus.id, targetId: questionEntity?.id, label: 'требует проверки' }));
     expect(second.addedQuestionCount).toBe(0);
     expect(second.hasNewInformation).toBe(false);
+  });
+
+  it('does not create a second question card when the same question is already a candidate entity', () => {
+    const investigationCase = createSeedCase();
+    const focus = investigationCase.entities[0];
+    const outcome = mergeResearchResultWithOutcome(investigationCase, focus, {
+      summary: '', identityAssessment: '', entityUpdates: [], claims: [], sources: [], warnings: [],
+      candidateEntities: [{ id: 'question-candidate', type: 'question', title: 'Кто подписал документ?', subtitle: '', summary: '', occurredAt: '', attributes: [] }],
+      questions: [{ text: 'Кто подписал документ?', why: 'Нужно установить подписанта.', priority: 'high' }],
+    });
+
+    expect(outcome.addedQuestionCount).toBe(0);
+    expect(outcome.investigationCase.entities.filter((entity) => entity.type === 'question' && entity.title === 'Кто подписал документ?')).toHaveLength(1);
   });
 
   it('adds sourced requisites to an existing entity and de-duplicates a repeated value', () => {
@@ -128,6 +143,29 @@ describe('research proposal merge', () => {
     expect(outcome.addedEntityCount).toBe(0);
     expect(outcome.addedAttributeCount).toBe(1);
     expect(outcome.investigationCase.entities.find((entity) => entity.id === focus.id)?.attributes).toContainEqual(expect.objectContaining({ key: 'social' }));
+  });
+});
+
+describe('interactive graph connections', () => {
+  it('creates a default editable relation between two cards', () => {
+    const investigationCase = createSeedCase();
+    const result = connectEntities(investigationCase, 'ivan-morozov', 'anna-lebedeva', 'relation-manual');
+
+    expect(result.created).toBe(true);
+    expect(result.relation).toMatchObject({ id: 'relation-manual', label: 'связано', status: 'user_asserted', createdBy: 'user' });
+    expect(result.investigationCase.relations).toContainEqual(result.relation);
+  });
+
+  it('rejects self-links and repeated default manual relations', () => {
+    const investigationCase = createSeedCase();
+    const selfLink = connectEntities(investigationCase, 'ivan-morozov', 'ivan-morozov', 'self');
+    const first = connectEntities(investigationCase, 'ivan-morozov', 'anna-lebedeva', 'first');
+    const duplicate = connectEntities(first.investigationCase, 'ivan-morozov', 'anna-lebedeva', 'second');
+
+    expect(selfLink.created).toBe(false);
+    expect(duplicate.created).toBe(false);
+    expect(duplicate.relation?.id).toBe('first');
+    expect(duplicate.investigationCase.relations).toHaveLength(first.investigationCase.relations.length);
   });
 });
 

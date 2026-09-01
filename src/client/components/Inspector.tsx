@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, CalendarDays, ContactRound, Crosshair, FileText, FileUp, Globe2, IdCard, Link2, Plus, Search, Sparkles } from 'lucide-react';
-import { Button, IconButton, Select, TextField } from '@operator-ui/framework';
-import type { CaseFact, EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
+import { ArrowUpRight, Bot, CalendarDays, ContactRound, Crosshair, FileText, FileUp, Globe2, IdCard, Search, Sparkles } from 'lucide-react';
+import { Button, IconButton, PlainTextEditor, Select, TextField } from '@operator-ui/framework';
+import type { EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
 import { evidenceStyles } from '../../shared/evidenceStyle';
-import { formatTemporalDate, presentSource, type EntityProvenance } from '../lib/entityProvenance';
+import { formatTemporalDate, type EntityProvenance } from '../lib/entityProvenance';
 
 interface InspectorProps {
   entity?: InvestigationEntity;
@@ -15,23 +15,20 @@ interface InspectorProps {
   research?: EntityResearchState;
   researchSubject?: InvestigationEntity;
   provenance?: EntityProvenance;
-  onAddFact: (kind: CaseFact['kind'], text: string) => void;
   onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
-  onAddRelation: (targetId: string, label: string) => void;
+  onUpdateRelation: (input: { label: string; explanation: string }) => void;
   onResearch: (question: string, file?: File) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, provenance, onAddFact, onAddAttribute, onAddRelation, onResearch, onClose }: InspectorProps) {
-  const [entryText, setEntryText] = useState('');
-  const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, provenance, onAddAttribute, onUpdateRelation, onResearch, onClose }: InspectorProps) {
   const [researchQuestion, setResearchQuestion] = useState('');
   const [researchMode, setResearchMode] = useState<'web' | 'file'>('web');
   const [researchFile, setResearchFile] = useState<File>();
   const [fileError, setFileError] = useState<string>();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [targetId, setTargetId] = useState('');
   const [relationLabel, setRelationLabel] = useState('');
+  const [relationExplanation, setRelationExplanation] = useState('');
   const [attributeKey, setAttributeKey] = useState('');
   const [attributeValue, setAttributeValue] = useState('');
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
@@ -45,6 +42,11 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [entity?.id]);
 
+  useEffect(() => {
+    setRelationLabel(relation?.label ?? '');
+    setRelationExplanation(relation?.explanation ?? '');
+  }, [relation?.id, relation?.explanation, relation?.label]);
+
   if (relation) {
     const visual = evidenceStyles[relation.status];
     const from = allEntities.find((item) => item.id === relation.sourceId);
@@ -56,6 +58,12 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
         <span className="inspector__eyebrow">Выбранная связь</span>
         <h2>{relation.label}</h2>
         <p className="relation-direction">{from?.title ?? relation.sourceId} <span>→</span> {to?.title ?? relation.targetId}</p>
+        <section className="inspector-section relation-properties">
+          <h3>Свойства связи</h3>
+          <label><span>Название</span><TextField value={relationLabel} onChange={(event) => setRelationLabel(event.target.value)} placeholder="Например: работает в" /></label>
+          <label><span>Описание</span><PlainTextEditor value={relationExplanation} onChange={(event) => setRelationExplanation(event.target.value)} placeholder="Почему эти карточки связаны?" /></label>
+          <Button variant="primary" disabled={!relationLabel.trim()} onClick={() => onUpdateRelation({ label: relationLabel, explanation: relationExplanation })}>Сохранить свойства</Button>
+        </section>
         {relationDate && <div className="inspector-object-date"><CalendarDays size={12} /><span>Дата связи</span><time dateTime={relation.occurredAt}>{relationDate}</time></div>}
         <div className="confidence-card">
           <div><i style={{ background: visual.color }} /><span>{visual.label}</span></div>
@@ -82,22 +90,14 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
       <aside className="inspector inspector--empty">
         <div className="empty-inspector-icon"><Search size={24} /></div>
         <h2>Выберите карточку</h2>
-        <p>Здесь появятся факты, вопросы, источники и инструменты исследования.</p>
+        <p>Здесь появятся реквизиты, источники и инструменты исследования выбранного объекта.</p>
       </aside>
     );
   }
 
-  const relatedEntities = allEntities.filter((item) => item.id !== entity.id);
   const entityDate = formatTemporalDate(entity.occurredAt);
   const attributeDefinitions = getEntityAttributeDefinitions(entity.type);
   const selectedAttributeDefinition = attributeDefinitions.find((definition) => definition.key === attributeKey) ?? attributeDefinitions[0];
-
-  function submitEntry() {
-    const text = entryText.trim();
-    if (!text) return;
-    onAddFact(entryKind, text);
-    setEntryText('');
-  }
 
   return (
     <aside className="inspector">
@@ -171,56 +171,6 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
         </button>
       </section>
 
-      <section className="inspector-section">
-        <div className="section-heading"><h3>Факты и вопросы</h3><span>{entity.facts.length}</span></div>
-        <div className="fact-list">
-          {entity.facts.map((fact) => {
-            const factSources = fact.sourceIds
-              .map((sourceId) => sourceById.get(sourceId))
-              .filter((source): source is SourceReference => Boolean(source))
-              .map(presentSource);
-            return <article className={`fact-item fact-item--${fact.kind}`} key={fact.id}>
-              <span>{fact.kind === 'question' ? '?' : fact.kind === 'note' ? '✎' : '•'}</span>
-              <div>
-                <p>{fact.text}</p>
-                <small>{evidenceStyles[fact.status].label} · {Math.round(fact.confidence * 100)}%</small>
-                <div className="fact-sources">
-                  {factSources.map((source) => source.href
-                    ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}<ArrowUpRight size={9} /></a>
-                    : <span title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}</span>)}
-                  {factSources.length === 0 && <span>{fact.createdBy === 'user' ? 'Вручную' : 'Источник не указан'}</span>}
-                </div>
-              </div>
-            </article>;
-          })}
-          {entity.facts.length === 0 && <p className="muted-copy">Пока нет записей.</p>}
-        </div>
-        <div className="entry-composer">
-          <select value={entryKind} onChange={(event) => setEntryKind(event.target.value as CaseFact['kind'])}>
-            <option value="claim">Мой факт</option>
-            <option value="question">Вопрос</option>
-            <option value="note">Заметка</option>
-          </select>
-          <textarea value={entryText} onChange={(event) => setEntryText(event.target.value)} placeholder="Добавить к карточке…" />
-          <button onClick={submitEntry}><Plus size={14} /> Добавить</button>
-        </div>
-      </section>
-
-      <section className="inspector-section">
-        <div className="section-heading"><h3>Ручная связь</h3><Link2 size={14} /></div>
-        <div className="relation-composer">
-          <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
-            <option value="">Выберите карточку…</option>
-            {relatedEntities.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}
-          </select>
-          <input value={relationLabel} onChange={(event) => setRelationLabel(event.target.value)} placeholder="Например: работает в" />
-          <button disabled={!targetId || !relationLabel.trim()} onClick={() => {
-            onAddRelation(targetId, relationLabel.trim());
-            setTargetId('');
-            setRelationLabel('');
-          }}>Связать</button>
-        </div>
-      </section>
     </aside>
   );
 }

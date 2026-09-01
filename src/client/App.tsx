@@ -3,7 +3,6 @@ import { Bot, ContactRound, Plus, Search, ShieldCheck } from 'lucide-react';
 import { Button, ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Select } from '@operator-ui/framework';
 import type {
   CaseSummary,
-  CaseFact,
   CreateCaseInput,
   EntityResearchState,
   EntityAttributeKind,
@@ -20,7 +19,7 @@ import { entityTypes } from '../shared/domain';
 import { attributeIdentityKey } from '../shared/entityAttributeCatalog';
 import { getDefaultSubjectEntityId, getResearchSubjectEntity, getResearchSubjectEntityId, resetResearchSubject, setResearchSubject } from '../shared/caseSubject';
 import { api } from './lib/api';
-import { isEntityVisible, mergeResearchResultWithOutcome, removeEntityFromCase } from './lib/graph';
+import { connectEntities, isEntityVisible, mergeResearchResultWithOutcome, removeEntityFromCase } from './lib/graph';
 import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
 import { arrangeInvestigationGraph } from './lib/treeGraphLayout';
 import { getEntityProvenance } from './lib/entityProvenance';
@@ -201,23 +200,6 @@ export function App() {
     setMessage(result.created ? `Контакт «${contact.displayName}» добавлен на доску.` : `Контакт «${contact.displayName}» уже есть на доске.`);
   }
 
-  function addFact(kind: CaseFact['kind'], text: string) {
-    if (!selectedEntityId) return;
-    const fact: CaseFact = {
-      id: `fact-${crypto.randomUUID().slice(0, 8)}`,
-      kind,
-      text,
-      status: kind === 'question' ? 'unknown' : 'user_asserted',
-      confidence: kind === 'question' ? 0 : 0.5,
-      sourceIds: [],
-      createdBy: 'user',
-    };
-    commit((current) => ({
-      ...current,
-      entities: current.entities.map((entity) => entity.id === selectedEntityId ? { ...entity, facts: [...entity.facts, fact] } : entity),
-    }));
-  }
-
   function addAttribute(input: { key: string; label: string; value: string; kind: EntityAttributeKind }) {
     if (!selectedEntityId) return;
     const value = input.value.trim();
@@ -240,20 +222,29 @@ export function App() {
     }));
   }
 
-  function addRelation(targetId: string, label: string) {
-    if (!selectedEntityId) return;
-    const relation: InvestigationRelation = {
-      id: `relation-${crypto.randomUUID().slice(0, 8)}`,
-      sourceId: selectedEntityId,
-      targetId,
-      label,
-      explanation: 'Связь добавлена пользователем и требует проверки источниками.',
-      status: 'user_asserted',
-      confidence: 0.5,
-      sourceIds: [],
-      createdBy: 'user',
-    };
-    commit((current) => ({ ...current, relations: [...current.relations, relation] }));
+  function connectCards(sourceId: string, targetId: string) {
+    const current = investigationCaseRef.current;
+    if (!current) return;
+    const result = connectEntities(current, sourceId, targetId, `relation-${crypto.randomUUID().slice(0, 8)}`);
+    if (result.created) commit(() => result.investigationCase);
+    if (result.relation) {
+      setSelectedEntityId(undefined);
+      setSelectedRelationId(result.relation.id);
+    }
+    setMessage(result.created ? 'Связь создана. Уточните её название и описание в инспекторе.' : result.message);
+  }
+
+  function updateSelectedRelation(input: { label: string; explanation: string }) {
+    if (!selectedRelationId || !input.label.trim()) return;
+    commit((current) => ({
+      ...current,
+      relations: current.relations.map((relation) => relation.id === selectedRelationId ? {
+        ...relation,
+        label: input.label.trim(),
+        explanation: input.explanation.trim() || 'Связь добавлена пользователем и требует проверки источниками.',
+      } : relation),
+    }));
+    setMessage('Свойства связи сохранены.');
   }
 
   async function research(question: string, focusEntityId = selectedEntityId, file?: File) {
@@ -441,6 +432,7 @@ export function App() {
             ...current,
             entities: current.entities.map((entity) => entity.id === entityId ? { ...entity, position } : entity),
           }))}
+          onConnectEntities={connectCards}
         />
         <LayerControl investigationCase={displayedCase} visibleTypes={visibleTypes} onToggle={toggleLayer} onShowAll={() => setVisibleTypes(new Set(entityTypes))} />
         <EvidenceLegendControl />
@@ -455,9 +447,8 @@ export function App() {
         research={selectedEntity ? researchByEntityId[selectedEntity.id] : undefined}
         researchSubject={getResearchSubjectEntity(displayedCase)}
         provenance={selectedEntity ? getEntityProvenance(displayedCase, selectedEntity) : undefined}
-        onAddFact={addFact}
         onAddAttribute={addAttribute}
-        onAddRelation={addRelation}
+        onUpdateRelation={updateSelectedRelation}
         onResearch={(question, file) => research(question, selectedEntityId, file)}
         onClose={() => { setSelectedEntityId(undefined); setSelectedRelationId(undefined); }}
       />}

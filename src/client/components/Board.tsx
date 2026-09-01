@@ -10,6 +10,7 @@ import {
   useNodesState,
   useReactFlow,
   type Edge,
+  type Connection,
   type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -37,10 +38,11 @@ interface BoardProps {
   onSelectEntity: (entityId?: string) => void;
   onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
+  onConnectEntities: (sourceId: string, targetId: string) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onOpenEntityMenu, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const [viewportZoom, setViewportZoom] = useState(1);
@@ -104,6 +106,11 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
         }}
         onPaneClick={() => onSelectEntity(undefined)}
         onNodeDragStop={(_event, node) => onMoveEntity(node.id, node.position)}
+        onConnect={(connection: Connection) => {
+          if (connection.source && connection.target) onConnectEntities(connection.source, connection.target);
+        }}
+        nodesConnectable={!researching}
+        connectionLineStyle={{ stroke: '#8a5f31', strokeWidth: 2 }}
         onEdgeClick={(_event, edge) => {
           const relation = investigationCase.relations.find((item) => item.id === edge.id);
           if (relation) onSelectRelation(relation);
