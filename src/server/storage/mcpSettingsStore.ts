@@ -53,11 +53,9 @@ export const defaultMcpServers: McpServerSetting[] = [
     description: 'Поиск по вебу, новостям, изображениям и публичным организациям через Brave Search API.',
     sourceUrl: 'https://github.com/brave/brave-search-mcp-server', caution: 'Нужен ключ Brave Search API в переменной окружения BRAVE_API_KEY; значение ключа приложение не хранит.',
   },
-  {
-    id: 'custom_osint', name: 'Пользовательский OSINT MCP', enabled: false, transport: 'stdio', command: '', args: [], url: '', bearerTokenEnvVar: '', envVars: [], requiredEnvVars: [], preset: false,
-    description: 'Собственный локальный stdio- или удалённый HTTP MCP-сервер.', sourceUrl: '', caution: 'Подключайте только серверы, исходный код и оператор которых вам известны.',
-  },
 ];
+
+const removedServerIds = new Set(['custom_osint']);
 
 async function commandExists(command: string): Promise<boolean> {
   if (!command) return false;
@@ -80,7 +78,9 @@ export class McpSettingsStore {
 
   async load(): Promise<McpSettings> {
     try {
-      return settingsSchema.parse(JSON.parse(await readFile(this.filePath, 'utf8')));
+      const settings = settingsSchema.parse(JSON.parse(await readFile(this.filePath, 'utf8')));
+      const servers = settings.servers.filter((server) => !removedServerIds.has(server.id));
+      return servers.length === settings.servers.length ? settings : this.save({ ...settings, servers });
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
       return this.save({ servers: defaultMcpServers, updatedAt: new Date().toISOString() });
@@ -88,7 +88,7 @@ export class McpSettingsStore {
   }
 
   async save(input: McpSettings): Promise<McpSettings> {
-    const parsed = settingsSchema.parse({ ...input, updatedAt: new Date().toISOString() });
+    const parsed = settingsSchema.parse({ ...input, servers: input.servers.filter((server) => !removedServerIds.has(server.id)), updatedAt: new Date().toISOString() });
     await mkdir(path.dirname(this.filePath), { recursive: true });
     const temporaryPath = `${this.filePath}.tmp`;
     await writeFile(temporaryPath, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
