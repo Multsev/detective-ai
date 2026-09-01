@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatTemporalDate, getEntityProvenance, presentSource } from '../src/client/lib/entityProvenance.js';
+import { buildEntityProvenanceIndex, formatTemporalDate, getEntityProvenance, presentSource } from '../src/client/lib/entityProvenance.js';
 import { createSeedCase } from '../src/shared/seed.js';
 
 describe('entity provenance', () => {
@@ -9,6 +9,14 @@ describe('entity provenance', () => {
     const provenance = getEntityProvenance(investigationCase, entity);
 
     expect(provenance.primary).toMatchObject({ kind: 'web', label: 'example.com', href: 'https://example.com/interview' });
+  });
+
+  it('indexes every entity and de-duplicates relation sources in one pass', () => {
+    const investigationCase = createSeedCase();
+    const index = buildEntityProvenanceIndex(investigationCase);
+
+    expect(index.size).toBe(investigationCase.entities.length);
+    expect(index.get('anna-lebedeva')?.sources).toHaveLength(1);
   });
 
   it('labels a source-free user card as manual', () => {

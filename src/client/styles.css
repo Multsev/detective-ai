@@ -50,10 +50,11 @@ button { cursor: pointer; }
 .board-shell { position: relative; min-height: 0; background: #a78562; }
 .board-shell::after { content:""; position:absolute; inset:0; pointer-events:none; box-shadow: inset 0 0 90px rgba(52,31,16,.32); z-index:2; }
 .react-flow__pane { background: radial-gradient(circle at 20% 12%,rgba(255,255,255,.14),transparent 25%),repeating-linear-gradient(7deg,rgba(65,41,23,.025) 0 1px,transparent 1px 5px),#ad8c68; }
-.react-flow__controls { overflow: hidden; border: 1px solid rgba(67,42,24,.3)!important; border-radius: 7px!important; box-shadow: 0 5px 20px rgba(60,37,21,.18)!important; }
+.react-flow__controls { bottom:52px!important;overflow: hidden; border: 1px solid rgba(67,42,24,.3)!important; border-radius: 7px!important; box-shadow: 0 5px 20px rgba(60,37,21,.18)!important; }
 .react-flow__controls button { color: #37424b; background: #ede3d1; border-bottom-color: #c9b89f; }
 .react-flow__edge-path { filter: drop-shadow(0 1px 1px rgba(42,28,17,.28)); }
 .react-flow__edge-textbg { stroke: rgba(83,56,34,.15); stroke-width: 1px; }
+.board-shell.is-dense-graph .react-flow__edge-path,.board-shell.is-navigating .react-flow__edge-path{filter:none}.board-shell.is-navigating .react-flow__edge-text,.board-shell.is-navigating .react-flow__edge-textbg{display:none}.board-shell.is-navigating .entity-card{box-shadow:0 2px 5px rgba(55,32,17,.2);transition:none}.board-shell.is-dense-graph .entity-card{animation:none}.entity-card.is-reduced-detail{min-height:72px}.entity-card.is-reduced-detail .entity-card__portrait{width:38px;height:42px;flex-basis:38px}.entity-card.is-reduced-detail h3{font-size:13px}.entity-card.is-reduced-detail .entity-card__header p{display:none}
 .entity-card { position: relative; width: 205px; min-height: 145px; padding: 13px 13px 10px; color: var(--ink); background: var(--paper); border: 1px solid rgba(60,39,23,.13); box-shadow: 0 10px 22px rgba(55,32,17,.25),0 1px 1px rgba(0,0,0,.2); transform: rotate(-.35deg); transition: box-shadow .15s,transform .15s; animation:card-arrive .38s cubic-bezier(.2,.8,.2,1); }
 .entity-card:hover,.entity-card.is-selected { transform: rotate(0) translateY(-2px); box-shadow: 0 0 0 3px rgba(208,162,84,.8),0 14px 28px rgba(55,32,17,.3); }
 .entity-card--company { background:#e7e3d5; transform:rotate(.4deg); }.entity-card--document{background:#e8d9aa}.entity-card--question{background:#ede69a}.entity-card--note{background:#d8e0cb}.entity-card--event{background:#e8d7d2}.entity-card--location{background:#dbe3e1}

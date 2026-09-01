@@ -17,23 +17,49 @@ export interface EntityProvenance {
 }
 
 export function getEntityProvenance(investigationCase: InvestigationCase, entity: InvestigationEntity): EntityProvenance {
-  const directSourceIds = new Set([
-    ...(entity.sourceIds ?? []),
-    ...entity.facts.flatMap((fact) => fact.sourceIds),
-  ]);
-  const relationSourceIds = investigationCase.relations
-    .filter((relation) => relation.sourceId === entity.id || relation.targetId === entity.id)
-    .flatMap((relation) => relation.sourceIds);
-  const orderedSourceIds = [...directSourceIds, ...relationSourceIds.filter((id) => !directSourceIds.has(id))];
-  const sourceById = new Map(investigationCase.sources.map((source) => [source.id, source]));
-  const sources = orderedSourceIds
-    .map((sourceId) => sourceById.get(sourceId))
-    .filter((source): source is SourceReference => Boolean(source))
-    .map(presentSource);
+  return buildEntityProvenanceIndex(investigationCase).get(entity.id) ?? missingProvenance(entity, false);
+}
 
-  if (sources.length > 0) return { primary: sources[0], additionalCount: sources.length - 1, sources };
-  const hasAiRelation = investigationCase.relations.some((relation) =>
-    (relation.sourceId === entity.id || relation.targetId === entity.id) && relation.createdBy === 'ai');
+export function buildEntityProvenanceIndex(investigationCase: InvestigationCase): Map<string, EntityProvenance> {
+  const sourceById = new Map(investigationCase.sources.map((source) => [source.id, source]));
+  const relationSourceIds = new Map<string, string[]>();
+  const entitiesWithAiRelations = new Set<string>();
+
+  for (const relation of investigationCase.relations) {
+    for (const entityId of [relation.sourceId, relation.targetId]) {
+      const ids = relationSourceIds.get(entityId) ?? [];
+      ids.push(...relation.sourceIds);
+      relationSourceIds.set(entityId, ids);
+      if (relation.createdBy === 'ai') entitiesWithAiRelations.add(entityId);
+    }
+  }
+
+  return new Map(investigationCase.entities.map((entity) => {
+    const directSourceIds = new Set([
+      ...(entity.sourceIds ?? []),
+      ...entity.facts.flatMap((fact) => fact.sourceIds),
+    ]);
+    const orderedSourceIds = [
+      ...directSourceIds,
+      ...(relationSourceIds.get(entity.id) ?? []).filter((id) => !directSourceIds.has(id)),
+    ];
+    const seenSourceIds = new Set<string>();
+    const sources: SourcePresentation[] = [];
+    for (const sourceId of orderedSourceIds) {
+      if (seenSourceIds.has(sourceId)) continue;
+      seenSourceIds.add(sourceId);
+      const source = sourceById.get(sourceId);
+      if (source) sources.push(presentSource(source));
+    }
+
+    const provenance = sources.length > 0
+      ? { primary: sources[0], additionalCount: sources.length - 1, sources }
+      : missingProvenance(entity, entitiesWithAiRelations.has(entity.id));
+    return [entity.id, provenance];
+  }));
+}
+
+function missingProvenance(entity: InvestigationEntity, hasAiRelation: boolean): EntityProvenance {
   const aiCreated = entity.createdBy === 'ai' || hasAiRelation;
   return {
     primary: aiCreated

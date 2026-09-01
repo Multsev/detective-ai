@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   Background,
   BackgroundVariant,
   Controls,
+  getViewportForBounds,
   ReactFlow,
   useEdgesState,
   useNodesInitialized,
@@ -16,7 +17,8 @@ import type { EntityResearchState, EntityType, InvestigationCase, InvestigationR
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { getResearchSubjectEntityId } from '../../shared/caseSubject';
 import { isEntityVisible } from '../lib/graph';
-import { getEntityProvenance } from '../lib/entityProvenance';
+import { buildEntityProvenanceIndex } from '../lib/entityProvenance';
+import { getGraphBounds, isDenseGraph, reconcileFlowNodes, shouldReduceGraphDetail } from '../lib/graphPerformance';
 import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
 
@@ -39,15 +41,21 @@ interface BoardProps {
 }
 
 export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+  const boardRef = useRef<HTMLDivElement>(null);
   const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
+  const [viewportZoom, setViewportZoom] = useState(1);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const denseGraph = isDenseGraph(investigationCase.entities.length, investigationCase.relations.length);
+  const reducedDetail = shouldReduceGraphDetail(investigationCase.entities.length, investigationCase.relations.length, viewportZoom);
+  const provenanceByEntityId = useMemo(() => buildEntityProvenanceIndex(investigationCase), [investigationCase.entities, investigationCase.relations, investigationCase.sources]);
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, provenance: getEntityProvenance(investigationCase, entity) },
+    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail },
     selected: entity.id === selectedEntityId,
     hidden: !isEntityVisible(entity, visibleTypes, search),
-  })), [investigationCase, researchByEntityId, researchSubjectEntityId, search, selectedEntityId, visibleTypes]);
+  })), [investigationCase.entities, provenanceByEntityId, reducedDetail, researchByEntityId, researchSubjectEntityId, search, selectedEntityId, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];
@@ -55,9 +63,9 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
       id: relation.id,
       source: relation.sourceId,
       target: relation.targetId,
-      label: `${relation.label} · ${Math.round(relation.confidence * 100)}%`,
+      label: reducedDetail ? undefined : `${relation.label} · ${Math.round(relation.confidence * 100)}%`,
       type: 'default',
-      animated: relation.status === 'hypothesis',
+      animated: !denseGraph && relation.status === 'hypothesis',
       style: { stroke: visual.color, strokeWidth: visual.width, strokeDasharray: visual.dash },
       labelStyle: { fill: '#25303a', fontWeight: 750, fontSize: 11 },
       labelBgStyle: { fill: '#efe1c7', fillOpacity: 0.95 },
@@ -65,24 +73,29 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
       labelBgBorderRadius: 4,
       data: { relation },
     };
-  }), [investigationCase.relations]);
+  }), [denseGraph, investigationCase.relations, reducedDetail]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityFlowNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
 
-  useEffect(() => setNodes(flowNodes), [flowNodes, setNodes]);
+  useEffect(() => setNodes((current) => reconcileFlowNodes(current, flowNodes)), [flowNodes, setNodes]);
   useEffect(() => setEdges(flowEdges), [flowEdges, setEdges]);
 
   const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (_event, node) => onSelectEntity(node.id === selectedEntityId ? undefined : node.id);
 
   return (
-    <div className="board-shell">
+    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onMoveStart={() => setIsNavigating(true)}
+        onMoveEnd={(_event, viewport) => {
+          setViewportZoom(viewport.zoom);
+          setIsNavigating(false);
+        }}
         onNodeClick={handleNodeClick}
         onNodeContextMenu={(event, node) => {
           event.preventDefault();
@@ -96,20 +109,23 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
           if (relation) onSelectRelation(relation);
         }}
         fitView
+        onlyRenderVisibleElements
         minZoom={0.15}
         maxZoom={1.7}
         proOptions={{ hideAttribution: true }}
       >
         <ResearchAutoFit
+          nodes={nodes}
+          boardRef={boardRef}
           enabled={autoFitResearch}
           entityCount={investigationCase.entities.length}
           relationCount={investigationCase.relations.length}
           researching={researching}
         />
         <RevealEntity request={revealEntityRequest} />
-        <FitGraphOnRequest requestKey={fitGraphRequestKey} />
+        <FitGraphOnRequest nodes={nodes} boardRef={boardRef} requestKey={fitGraphRequestKey} />
         <Background variant={BackgroundVariant.Dots} gap={16} size={1.4} color="rgba(84,55,31,.28)" />
-        <Controls showInteractive={false} />
+        <GraphControls nodes={nodes} boardRef={boardRef} />
       </ReactFlow>
       {nodes.filter((node) => !node.hidden).length === 0 && (
         <div className="empty-board">На доске нет карточек, подходящих под фильтр.</div>
@@ -118,17 +134,16 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
   );
 }
 
-function FitGraphOnRequest({ requestKey }: { requestKey?: number }) {
-  const { fitView } = useReactFlow<EntityFlowNode>();
-  const nodesInitialized = useNodesInitialized();
+function FitGraphOnRequest({ nodes, boardRef, requestKey }: { nodes: EntityFlowNode[]; boardRef: RefObject<HTMLDivElement | null>; requestKey?: number }) {
+  const fitEntireGraph = useFitEntireGraph(nodes, boardRef);
 
   useEffect(() => {
-    if (requestKey === undefined || !nodesInitialized) return undefined;
+    if (requestKey === undefined) return undefined;
     const animationFrame = requestAnimationFrame(() => {
-      void fitView({ padding: 0.16, duration: 420, includeHiddenNodes: false });
+      void fitEntireGraph(420);
     });
     return () => cancelAnimationFrame(animationFrame);
-  }, [fitView, nodesInitialized, requestKey]);
+  }, [fitEntireGraph, requestKey]);
 
   return null;
 }
@@ -149,13 +164,15 @@ function RevealEntity({ request }: { request?: { entityId: string; key: number }
   return null;
 }
 
-function ResearchAutoFit({ enabled, entityCount, relationCount, researching }: {
+function ResearchAutoFit({ nodes, boardRef, enabled, entityCount, relationCount, researching }: {
+  nodes: EntityFlowNode[];
+  boardRef: RefObject<HTMLDivElement | null>;
   enabled: boolean;
   entityCount: number;
   relationCount: number;
   researching: boolean;
 }) {
-  const { fitView } = useReactFlow<EntityFlowNode>();
+  const fitEntireGraph = useFitEntireGraph(nodes, boardRef);
   const previous = useRef<ResearchAutoFitState>({ entityCount, relationCount, researching });
 
   useEffect(() => {
@@ -165,10 +182,28 @@ function ResearchAutoFit({ enabled, entityCount, relationCount, researching }: {
     if (!shouldFit) return undefined;
 
     const animationFrame = requestAnimationFrame(() => {
-      void fitView({ padding: 0.16, duration: 360, includeHiddenNodes: false });
+      void fitEntireGraph(360);
     });
     return () => cancelAnimationFrame(animationFrame);
-  }, [enabled, entityCount, fitView, relationCount, researching]);
+  }, [enabled, entityCount, fitEntireGraph, relationCount, researching]);
 
   return null;
+}
+
+function GraphControls({ nodes, boardRef }: { nodes: EntityFlowNode[]; boardRef: RefObject<HTMLDivElement | null> }) {
+  const fitEntireGraph = useFitEntireGraph(nodes, boardRef);
+  return <Controls showInteractive={false} onFitView={() => void fitEntireGraph(280)} />;
+}
+
+function useFitEntireGraph(nodes: EntityFlowNode[], boardRef: RefObject<HTMLDivElement | null>) {
+  const { setViewport } = useReactFlow<EntityFlowNode>();
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  return useCallback((duration: number) => {
+    const bounds = getGraphBounds(nodesRef.current);
+    const board = boardRef.current;
+    if (!board || bounds.width === 0 || bounds.height === 0) return Promise.resolve(false);
+    const viewport = getViewportForBounds(bounds, board.clientWidth, board.clientHeight, 0.15, 1.7, 0.16);
+    return setViewport(viewport, { duration });
+  }, [boardRef, setViewport]);
 }
