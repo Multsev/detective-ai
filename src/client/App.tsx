@@ -14,7 +14,7 @@ import type {
 } from '../shared/domain';
 import { entityTypes } from '../shared/domain';
 import { api } from './lib/api';
-import { mergeResearchResult, removeEntityFromCase } from './lib/graph';
+import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from './lib/graph';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
 import { CreateCaseDialog } from './components/CreateCaseDialog';
@@ -73,6 +73,22 @@ export function App() {
     () => (previewCase ?? investigationCase)?.relations.find((relation) => relation.id === selectedRelationId),
     [investigationCase, previewCase, selectedRelationId],
   );
+
+  useEffect(() => {
+    if (!selectedEntity || isEntityVisible(selectedEntity, visibleTypes, search)) return;
+    setSelectedEntityId(undefined);
+    setSelectedRelationId(undefined);
+  }, [search, selectedEntity, visibleTypes]);
+
+  useEffect(() => {
+    const closeInspectorOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || page !== 'board') return;
+      setSelectedEntityId(undefined);
+      setSelectedRelationId(undefined);
+    };
+    window.addEventListener('keydown', closeInspectorOnEscape);
+    return () => window.removeEventListener('keydown', closeInspectorOnEscape);
+  }, [page]);
 
   function commit(update: (current: InvestigationCase) => InvestigationCase) {
     setInvestigationCase((current) => {

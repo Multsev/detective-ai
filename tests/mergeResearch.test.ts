@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeResearchResult, removeEntityFromCase } from '../src/client/lib/graph.js';
+import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from '../src/client/lib/graph.js';
 import { createSeedCase } from '../src/shared/seed.js';
 
 describe('research proposal merge', () => {
@@ -50,5 +50,15 @@ describe('entity removal', () => {
     expect(result.entities.some((entity) => entity.id === entityId)).toBe(false);
     expect(result.relations.some((relation) => relation.sourceId === entityId || relation.targetId === entityId)).toBe(false);
     if (unrelatedRelation) expect(result.relations).toContainEqual(unrelatedRelation);
+  });
+});
+
+describe('board entity visibility', () => {
+  it('follows active layers and case-insensitive search', () => {
+    const entity = createSeedCase().entities[0];
+
+    expect(isEntityVisible(entity, new Set([entity.type]), 'МОРОЗОВ')).toBe(true);
+    expect(isEntityVisible(entity, new Set(), '')).toBe(false);
+    expect(isEntityVisible(entity, new Set([entity.type]), 'другое имя')).toBe(false);
   });
 });

@@ -1,4 +1,10 @@
-import type { InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchResult } from '../../shared/domain';
+import type { EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchResult } from '../../shared/domain';
+
+export function isEntityVisible(entity: InvestigationEntity, visibleTypes: ReadonlySet<EntityType>, search: string): boolean {
+  if (!visibleTypes.has(entity.type)) return false;
+  if (!search) return true;
+  return `${entity.title} ${entity.subtitle} ${entity.summary}`.toLowerCase().includes(search.toLowerCase());
+}
 
 export function removeEntityFromCase(investigationCase: InvestigationCase, entityId: string): InvestigationCase {
   return {

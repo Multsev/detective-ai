@@ -12,6 +12,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { EntityType, InvestigationCase, InvestigationRelation } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
+import { isEntityVisible } from '../lib/graph';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
 
 const nodeTypes = { entity: EntityNode };
@@ -34,8 +35,7 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
     position: entity.position,
     data: { entity },
     selected: entity.id === selectedEntityId,
-    hidden: !visibleTypes.has(entity.type)
-      || (Boolean(search) && !`${entity.title} ${entity.subtitle} ${entity.summary}`.toLowerCase().includes(search.toLowerCase())),
+    hidden: !isEntityVisible(entity, visibleTypes, search),
   })), [investigationCase.entities, search, selectedEntityId, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
@@ -62,7 +62,7 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
   useEffect(() => setNodes(flowNodes), [flowNodes, setNodes]);
   useEffect(() => setEdges(flowEdges), [flowEdges, setEdges]);
 
-  const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (_event, node) => onSelectEntity(node.id);
+  const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (_event, node) => onSelectEntity(node.id === selectedEntityId ? undefined : node.id);
 
   return (
     <div className="board-shell">
