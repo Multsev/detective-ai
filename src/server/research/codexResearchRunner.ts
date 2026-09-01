@@ -32,6 +32,13 @@ contradicted — достоверные источники расходятся;
 датой доступа к странице или текущей датой.
 Считай поиск продолжением текущего расследования: отдельно проверь связи фокусной карточки
 с уже существующими сущностями графа и верни новые подтверждаемые отношения в claims.
+Не возвращай уже существующие карточки, связи, вопросы и источники под новыми ID.
+Сопоставляй сущности по типу и идентичности, связи — по участникам, смыслу и периоду,
+источники — по URL. Уже проверенные URL не перечитывай без причины: ищи новые источники,
+изменения после предыдущего доступа или ответ на новый вопрос пользователя.
+Если всё найденное уже есть в контексте и новых подтверждений нет, верни пустые
+candidateEntities, claims, questions и sources, а в summary прямо напиши:
+«Новых сведений по сравнению с материалами дела не найдено.»
 Исследуемый объект дела и фокусная карточка имеют разные роли. Если они различаются,
 исследуй фокусную карточку прежде всего в отношении исследуемого объекта дела.
 `.trim();
@@ -116,6 +123,17 @@ export class CodexResearchRunner {
       relations: investigationCase.relations,
       sources: investigationCase.sources,
     };
+    const knownCoverage = {
+      entityIds: investigationCase.entities.map((entity) => entity.id),
+      relations: investigationCase.relations.map((relation) => ({
+        sourceId: relation.sourceId,
+        predicate: relation.label,
+        targetId: relation.targetId,
+        occurredAt: relation.occurredAt ?? '',
+        sourceIds: relation.sourceIds,
+      })),
+      reviewedSources: investigationCase.sources.map((source) => ({ id: source.id, url: source.url, accessedAt: source.accessedAt })),
+    };
     const enabledTools = document ? [] : this.mcpSettings.servers.filter((server) => server.enabled).map((server) => ({ id: server.id, name: server.name, description: server.description }));
     const documentSource: SourceReference | undefined = document ? {
       id: `file-${document.sha256.slice(0, 16)}`,
@@ -132,7 +150,7 @@ export class CodexResearchRunner {
     const relationshipGoal = researchSubject.id === focusEntity.id
       ? 'Фокусная карточка является текущим исследуемым объектом. Найди и проверь связи вокруг неё.'
       : `Фокусная карточка является отдельной ветвью. Проверь её прямые и косвенные связи с исследуемым объектом «${researchSubject.title}» (${researchSubject.id}); не утверждай наличие связи без источников.`;
-    const prompt = `${investigatorInstructions}\n\n${sourceInstructions}\n\nИсследуемый объект дела:\n${JSON.stringify(researchSubject)}\n\nФокусная карточка текущего запуска:\n${JSON.stringify(focusEntity)}\n\nЗадача сопоставления:\n${relationshipGoal}\n\nПолный контекст текущего дела:\n${JSON.stringify(graphContext)}\n\nВопрос пользователя:\n${researchQuestion || (document ? 'Извлеки из документа факты, сущности, связи и вопросы, относящиеся к выбранной карточке и исследуемому объекту дела.' : 'Найди связанные компании, людей, документы, события и проверяемые отношения.')}`;
+    const prompt = `${investigatorInstructions}\n\n${sourceInstructions}\n\nИсследуемый объект дела:\n${JSON.stringify(researchSubject)}\n\nФокусная карточка текущего запуска:\n${JSON.stringify(focusEntity)}\n\nЗадача сопоставления:\n${relationshipGoal}\n\nУже покрытые данные — не возвращай их повторно:\n${JSON.stringify(knownCoverage)}\n\nПолный контекст текущего дела:\n${JSON.stringify(graphContext)}\n\nВопрос пользователя:\n${researchQuestion || (document ? 'Извлеки из документа только новые факты, сущности, связи и вопросы, относящиеся к выбранной карточке и исследуемому объекту дела.' : 'Найди новые связанные компании, людей, документы, события и проверяемые отношения, которых ещё нет в деле.')}`;
 
     emit({ type: 'status', stage: 'starting', message: document ? `Передаю Codex текст файла «${document.fileName}».` : 'Запускаю Codex CLI в безопасном режиме только для чтения.' });
 

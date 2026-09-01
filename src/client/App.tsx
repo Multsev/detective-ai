@@ -18,7 +18,7 @@ import type {
 import { entityTypes } from '../shared/domain';
 import { getDefaultSubjectEntityId, getResearchSubjectEntity, getResearchSubjectEntityId, resetResearchSubject, setResearchSubject } from '../shared/caseSubject';
 import { api } from './lib/api';
-import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from './lib/graph';
+import { isEntityVisible, mergeResearchResultWithOutcome, removeEntityFromCase } from './lib/graph';
 import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
 import { arrangeInvestigationGraph } from './lib/treeGraphLayout';
 import { getEntityProvenance } from './lib/entityProvenance';
@@ -60,12 +60,17 @@ export function App() {
   const [fitGraphRequestKey, setFitGraphRequestKey] = useState<number>();
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [message, setMessage] = useState<string>();
+  const investigationCaseRef = useRef<InvestigationCase | undefined>(undefined);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const researching = Object.values(researchByEntityId).some((research) => research.status === 'running');
 
   useEffect(() => {
     frameworkPersistence.set('detective:auto-fit-research', autoFitResearch);
   }, [autoFitResearch]);
+
+  useEffect(() => {
+    investigationCaseRef.current = investigationCase;
+  }, [investigationCase]);
 
   useEffect(() => {
     Promise.all([api.listCases(), api.health(), api.googleStatus()])
@@ -112,27 +117,30 @@ export function App() {
   }, [page]);
 
   function commit(update: (current: InvestigationCase) => InvestigationCase) {
-    setInvestigationCase((current) => {
-      if (!current) return current;
-      const next = update(current);
-      setSaveState('saving');
-      saveQueue.current = saveQueue.current.catch(() => undefined).then(() => api.saveCase(next))
-        .then((savedCase) => {
-          setInvestigationCase((latest) => latest?.id === savedCase.id ? { ...latest, updatedAt: savedCase.updatedAt } : latest);
-          setCaseSummaries((summaries) => summaries.map((summary) => summary.id === savedCase.id ? {
-            ...summary,
-            updatedAt: savedCase.updatedAt,
-            entityCount: savedCase.entities.length,
-            relationCount: savedCase.relations.length,
-          } : summary));
-          setSaveState('saved');
-        })
-        .catch((error: Error) => {
-          setSaveState('error');
-          setMessage(error.message);
-        });
-      return next;
-    });
+    const current = investigationCaseRef.current;
+    if (!current) return;
+    const next = update(current);
+    investigationCaseRef.current = next;
+    setInvestigationCase(next);
+    setSaveState('saving');
+    saveQueue.current = saveQueue.current.catch(() => undefined).then(() => api.saveCase(next))
+      .then((savedCase) => {
+        if (investigationCaseRef.current?.id === savedCase.id) {
+          investigationCaseRef.current = { ...investigationCaseRef.current, updatedAt: savedCase.updatedAt };
+          setInvestigationCase(investigationCaseRef.current);
+        }
+        setCaseSummaries((summaries) => summaries.map((summary) => summary.id === savedCase.id ? {
+          ...summary,
+          updatedAt: savedCase.updatedAt,
+          entityCount: savedCase.entities.length,
+          relationCount: savedCase.relations.length,
+        } : summary));
+        setSaveState('saved');
+      })
+      .catch((error: Error) => {
+        setSaveState('error');
+        setMessage(error.message);
+      });
   }
 
   async function openCase(caseId: string) {
@@ -261,14 +269,16 @@ export function App() {
       if (file) await api.researchFileStream(investigationCase.id, focusEntityId, normalizedQuestion, file, onEvent);
       else await api.researchStream(investigationCase.id, focusEntityId, normalizedQuestion, onEvent);
       if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
-      const finalResult = streamedResult;
-      commit((current) => {
-        const currentFocus = current.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
-        return mergeResearchResult(current, currentFocus, finalResult);
-      });
+      const latestCase = investigationCaseRef.current ?? investigationCase;
+      const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
+      const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
+      if (outcome.hasNewInformation) commit(() => outcome.investigationCase);
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: {
         ...(current[focusEntityId] ?? initialResearch), status: 'completed', stage: 'completed',
-        message: `Готово: ${finalResult.candidateEntities.length} карточек, ${finalResult.claims.length} связей.`, result: finalResult,
+        message: outcome.hasNewInformation
+          ? `Добавлено: ${outcome.addedEntityCount} карточек, ${outcome.addedRelationCount} связей, ${outcome.addedSourceCount} источников, ${outcome.addedQuestionCount} вопросов${outcome.updatedRelationCount ? `; обновлено связей: ${outcome.updatedRelationCount}` : ''}.`
+          : 'Новых сведений и связей не найдено.',
+        result: outcome.result,
       } }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось выполнить исследование.';

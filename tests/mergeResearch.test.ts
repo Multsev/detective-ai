@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from '../src/client/lib/graph.js';
+import { isEntityVisible, mergeResearchResult, mergeResearchResultWithOutcome, removeEntityFromCase } from '../src/client/lib/graph.js';
 import { createSeedCase } from '../src/shared/seed.js';
 
 describe('research proposal merge', () => {
@@ -38,6 +38,63 @@ describe('research proposal merge', () => {
 
     expect(merged.entities.filter((entity) => entity.id === focus.id)).toHaveLength(1);
     expect(merged.sources.filter((source) => source.id === existingSource.id)).toHaveLength(1);
+  });
+
+  it('removes semantic duplicates even when Codex returns different IDs', () => {
+    const investigationCase = createSeedCase();
+    const focus = investigationCase.entities[1];
+    focus.facts.push({ id: 'existing-question', kind: 'question', text: 'Кто может подтвердить время его ухода?', status: 'unknown', confidence: 0, sourceIds: [], createdBy: 'user' });
+    const outcome = mergeResearchResultWithOutcome(investigationCase, focus, {
+      summary: 'Повтор ранее найденных сведений.',
+      identityAssessment: '',
+      candidateEntities: [{ id: 'anna-copy', type: 'person', title: '  АННА   ЛЕБЕДЕВА ', subtitle: 'Журналист', summary: '', occurredAt: '' }],
+      claims: [{ id: 'same-link-new-id', subjectId: 'anna-copy', objectId: 'sergey-volkov', predicate: 'ВОЗМОЖНО ВИДЕЛА!', status: 'hypothesis', confidence: 0.35, explanation: '', sourceIds: ['same-url-new-id'], occurredAt: '' }],
+      questions: [{ text: 'Кто может подтвердить время его ухода?', why: '', priority: 'high' }],
+      warnings: [],
+      sources: [{ id: 'same-url-new-id', title: 'Копия', url: 'https://example.com/interview/?utm_source=repeat#fragment', publisher: 'Материалы дела', publishedAt: '2026-08-28', accessedAt: '2026-09-01' }],
+    });
+
+    expect(outcome.hasNewInformation).toBe(false);
+    expect(outcome.investigationCase.entities).toHaveLength(investigationCase.entities.length);
+    expect(outcome.investigationCase.relations).toHaveLength(investigationCase.relations.length);
+    expect(outcome.investigationCase.sources).toHaveLength(investigationCase.sources.length);
+    expect(outcome.result).toMatchObject({ candidateEntities: [], claims: [], questions: [], sources: [] });
+    expect(outcome.result.summary).toContain('Новых сведений');
+  });
+
+  it('enriches an existing relation with a new source instead of adding another line', () => {
+    const investigationCase = createSeedCase();
+    const focus = investigationCase.entities[1];
+    const outcome = mergeResearchResultWithOutcome(investigationCase, focus, {
+      summary: 'Найден независимый источник.',
+      identityAssessment: '', candidateEntities: [], questions: [], warnings: [],
+      claims: [{ id: 'duplicate-relation', subjectId: 'anna-lebedeva', objectId: 'sergey-volkov', predicate: 'возможно видела', status: 'probable', confidence: 0.65, explanation: 'Новый источник подтверждает наблюдение.', sourceIds: ['independent-source'], occurredAt: '' }],
+      sources: [{ id: 'independent-source', title: 'Независимое свидетельство', url: 'https://news.example.org/report', publisher: 'Новости', publishedAt: '2026-08-29', accessedAt: '2026-09-01' }],
+    });
+
+    expect(outcome.addedRelationCount).toBe(0);
+    expect(outcome.updatedRelationCount).toBe(1);
+    expect(outcome.addedSourceCount).toBe(1);
+    expect(outcome.investigationCase.relations).toHaveLength(investigationCase.relations.length);
+    expect(outcome.investigationCase.relations.find((relation) => relation.id === 'relation-anna-sergey')?.sourceIds).toEqual(['source-user-interview', 'independent-source']);
+  });
+
+  it('persists a new research question so a later run can de-duplicate it', () => {
+    const investigationCase = createSeedCase();
+    const focus = investigationCase.entities[1];
+    const first = mergeResearchResultWithOutcome(investigationCase, focus, {
+      summary: 'Остался вопрос.', identityAssessment: '', candidateEntities: [], claims: [], sources: [], warnings: [],
+      questions: [{ text: 'Кому принадлежал автомобиль?', why: 'Нужно установить владельца.', priority: 'high' }],
+    });
+    const second = mergeResearchResultWithOutcome(first.investigationCase, focus, {
+      summary: 'Тот же вопрос.', identityAssessment: '', candidateEntities: [], claims: [], sources: [], warnings: [],
+      questions: [{ text: 'Кому принадлежал автомобиль?', why: 'Нужно установить владельца.', priority: 'high' }],
+    });
+
+    expect(first.addedQuestionCount).toBe(1);
+    expect(first.investigationCase.entities.find((entity) => entity.id === focus.id)?.facts).toContainEqual(expect.objectContaining({ kind: 'question', text: 'Кому принадлежал автомобиль?', createdBy: 'ai' }));
+    expect(second.addedQuestionCount).toBe(0);
+    expect(second.hasNewInformation).toBe(false);
   });
 });
 

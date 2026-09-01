@@ -65,6 +65,9 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('occurredAt');
       expect(prompt).toContain('publishedAt');
       expect(prompt).toContain('Не подменяй дату события датой статьи');
+      expect(prompt).toContain('Уже покрытые данные');
+      expect(prompt).toContain('reviewedSources');
+      expect(prompt).toContain('Новых сведений по сравнению с материалами дела не найдено');
       expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');
 
       const documentResult = await new CodexResearchRunner(executable, directory).investigate(
