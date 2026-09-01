@@ -1,4 +1,5 @@
 import type { EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchResult } from '../../shared/domain';
+import { normalizeCaseSubject } from '../../shared/caseSubject';
 
 export function isEntityVisible(entity: InvestigationEntity, visibleTypes: ReadonlySet<EntityType>, search: string): boolean {
   if (!visibleTypes.has(entity.type)) return false;
@@ -7,11 +8,13 @@ export function isEntityVisible(entity: InvestigationEntity, visibleTypes: Reado
 }
 
 export function removeEntityFromCase(investigationCase: InvestigationCase, entityId: string): InvestigationCase {
-  return {
+  return normalizeCaseSubject({
     ...investigationCase,
     entities: investigationCase.entities.filter((entity) => entity.id !== entityId),
     relations: investigationCase.relations.filter((relation) => relation.sourceId !== entityId && relation.targetId !== entityId),
-  };
+    defaultSubjectEntityId: investigationCase.defaultSubjectEntityId === entityId ? undefined : investigationCase.defaultSubjectEntityId,
+    researchSubjectEntityId: investigationCase.researchSubjectEntityId === entityId ? undefined : investigationCase.researchSubjectEntityId,
+  });
 }
 
 export function mergeResearchResult(

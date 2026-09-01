@@ -14,6 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { EntityResearchState, EntityType, InvestigationCase, InvestigationRelation } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
+import { getResearchSubjectEntityId } from '../../shared/caseSubject';
 import { isEntityVisible } from '../lib/graph';
 import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
@@ -37,14 +38,15 @@ interface BoardProps {
 }
 
 export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+  const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity, research: researchByEntityId[entity.id] },
+    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId },
     selected: entity.id === selectedEntityId,
     hidden: !isEntityVisible(entity, visibleTypes, search),
-  })), [investigationCase.entities, researchByEntityId, search, selectedEntityId, visibleTypes]);
+  })), [investigationCase.entities, researchByEntityId, researchSubjectEntityId, search, selectedEntityId, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];

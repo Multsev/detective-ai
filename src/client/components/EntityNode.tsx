@@ -2,7 +2,7 @@ import { Building2, CalendarDays, CheckCircle2, CircleHelp, FileText, LoaderCirc
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { EntityResearchState, InvestigationEntity } from '../../shared/domain';
 
-export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState }, 'entity'>;
+export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean }, 'entity'>;
 
 const iconByType = {
   person: UserRound,
@@ -25,15 +25,16 @@ const labelByType = {
 };
 
 export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
-  const { entity, research } = data;
+  const { entity, research, isResearchSubject } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const questions = entity.facts.filter((fact) => fact.kind === 'question').length;
 
   return (
-    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${research ? ` research-${research.status}` : ''}`}>
+    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}`}>
       <Handle type="target" position={Position.Left} className="entity-handle" />
       <span className="pushpin" />
+      {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}
       <header className="entity-card__header">
         <div className="entity-card__portrait">
           {entity.type === 'person' ? initials : <Icon size={22} strokeWidth={1.7} />}

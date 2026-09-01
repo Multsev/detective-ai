@@ -16,6 +16,7 @@ import type {
   ResearchStreamEvent,
 } from '../shared/domain';
 import { entityTypes } from '../shared/domain';
+import { getDefaultSubjectEntityId, getResearchSubjectEntity, getResearchSubjectEntityId, resetResearchSubject, setResearchSubject } from '../shared/caseSubject';
 import { api } from './lib/api';
 import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from './lib/graph';
 import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
@@ -234,9 +235,13 @@ export function App() {
       setMessage(`Исследование карточки «${focusEntity.title}» уже выполняется.`);
       return;
     }
-    const normalizedQuestion = question.trim() || (file ? 'Извлеки из документа факты, сущности, связи и вопросы, относящиеся к выбранной карточке.' : 'Найди связанные компании, людей, документы, события и проверяемые отношения.');
+    const researchSubject = getResearchSubjectEntity(investigationCase) ?? focusEntity;
+    const relationshipContext = researchSubject.id === focusEntity.id ? '' : ` в отношении объекта «${researchSubject.title}»`;
+    const normalizedQuestion = question.trim() || (file
+      ? `Извлеки из документа факты, сущности, связи и вопросы по выбранной карточке${relationshipContext}.`
+      : `Найди и проверь связи выбранной карточки${relationshipContext}.`);
     const initialResearch: EntityResearchState = {
-      entityId: focusEntityId, status: 'running', stage: 'starting', message: file ? `Загружаю файл «${file.name}».` : 'Подготавливаю полный контекст дела.', question: normalizedQuestion, startedAt: new Date().toISOString(), source: file ? 'file' : 'web', fileName: file?.name,
+      entityId: focusEntityId, status: 'running', stage: 'starting', message: file ? `Загружаю файл «${file.name}»${relationshipContext}.` : `Подготавливаю поиск${relationshipContext}.`, question: normalizedQuestion, startedAt: new Date().toISOString(), source: file ? 'file' : 'web', fileName: file?.name,
     };
     setSelectedEntityId(focusEntityId);
     setSelectedRelationId(undefined);
@@ -291,6 +296,23 @@ export function App() {
       : 'Объекты расставлены как связные деревья.');
   }
 
+  function chooseResearchSubject(entityId: string) {
+    const entity = investigationCase?.entities.find((item) => item.id === entityId);
+    if (!entity || researching) return;
+    commit((current) => setResearchSubject(current, entityId));
+    setEntityMenu(undefined);
+    setMessage(`«${entity.title}» установлен как исследуемый объект дела.`);
+  }
+
+  function restoreDefaultResearchSubject() {
+    if (!investigationCase || researching) return;
+    const defaultEntityId = getDefaultSubjectEntityId(investigationCase);
+    const defaultEntity = investigationCase.entities.find((entity) => entity.id === defaultEntityId);
+    commit(resetResearchSubject);
+    setEntityMenu(undefined);
+    if (defaultEntity) setMessage(`Исследуемый объект возвращён к исходной карточке «${defaultEntity.title}».`);
+  }
+
   async function refreshCodexStatus() {
     setRefreshingCodex(true);
     try {
@@ -319,6 +341,8 @@ export function App() {
     return <div className="loading-screen"><span className="brand__mark">D</span><p>{message ?? 'Открываем материалы дела…'}</p></div>;
   }
   const displayedCase = investigationCase;
+  const defaultSubjectEntityId = getDefaultSubjectEntityId(investigationCase);
+  const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const inspectorVisible = page === 'board' && Boolean(selectedEntity || selectedRelation);
   const pendingDeleteEntity = investigationCase.entities.find((entity) => entity.id === pendingDeleteEntityId);
   const pendingDeleteRelationCount = pendingDeleteEntityId
@@ -391,6 +415,7 @@ export function App() {
         sources={displayedCase.sources}
         aiConfigured={health.codex.ready}
         research={selectedEntity ? researchByEntityId[selectedEntity.id] : undefined}
+        researchSubject={getResearchSubjectEntity(displayedCase)}
         onAddFact={addFact}
         onAddRelation={addRelation}
         onResearch={(question, file) => research(question, selectedEntityId, file)}
@@ -407,6 +432,13 @@ export function App() {
       <GoogleContactsDialog open={showGoogleContacts} onClose={() => setShowGoogleContacts(false)} onImport={addGoogleContact} />
       <ContextMenu open={Boolean(entityMenu)} x={entityMenu?.x ?? 0} y={entityMenu?.y ?? 0} onClose={() => setEntityMenu(undefined)}>
         <ContextMenuItem onClick={() => setEntityMenu(undefined)}>Открыть карточку</ContextMenuItem>
+        {entityMenu && entityMenu.entityId !== researchSubjectEntityId && <ContextMenuItem disabled={researching} onClick={() => chooseResearchSubject(entityMenu.entityId)}>
+          Установить как исследуемый объект
+        </ContextMenuItem>}
+        {researchSubjectEntityId !== defaultSubjectEntityId && <ContextMenuItem disabled={researching} onClick={restoreDefaultResearchSubject}>
+          Вернуть исходный объект
+        </ContextMenuItem>}
+        <ContextMenuSeparator />
         <ContextMenuItem
           disabled={!health.codex.ready || Boolean(entityMenu && researchByEntityId[entityMenu.entityId]?.status === 'running')}
           onClick={() => {

@@ -29,6 +29,8 @@ describe('CaseStore', () => {
     expect(firstList[0].title).toBe('Дело № 0001 — Иван Морозов');
     expect(secondCase.id).toBe('case-0002-anna-lebedeva');
     expect(secondCase.title).toBe('Дело № 0002 — Анна Лебедева');
+    expect(secondCase.defaultSubjectEntityId).toBe(secondCase.entities[0].id);
+    expect(secondCase.researchSubjectEntityId).toBe(secondCase.entities[0].id);
     expect(thirdCase.id).toBe('case-0003-ooo-vektor');
     expect((await store.list()).map((item) => item.caseNumber)).toEqual([1, 2, 3]);
     await expect(stat(path.join(dataDirectory, 'cases', `${secondCase.id}.json`))).resolves.toBeDefined();
@@ -52,7 +54,7 @@ describe('CaseStore', () => {
   it('migrates the legacy single file without deleting it', async () => {
     const dataDirectory = await createTemporaryDirectory();
     const legacyCase = createSeedCase();
-    const { caseNumber: _caseNumber, subject: _subject, ...legacyShape } = legacyCase;
+    const { caseNumber: _caseNumber, subject: _subject, defaultSubjectEntityId: _defaultSubjectEntityId, researchSubjectEntityId: _researchSubjectEntityId, ...legacyShape } = legacyCase;
     await writeFile(path.join(dataDirectory, 'case.json'), JSON.stringify(legacyShape), 'utf8');
 
     const store = new CaseStore(dataDirectory);
@@ -61,6 +63,8 @@ describe('CaseStore', () => {
     expect(migrated.id).toBe('case-0001-ivan-morozov');
     expect(migrated.caseNumber).toBe(1);
     expect(migrated.subject).toBe('Иван Морозов');
+    expect(migrated.defaultSubjectEntityId).toBe('ivan-morozov');
+    expect(migrated.researchSubjectEntityId).toBe('ivan-morozov');
     await expect(readFile(path.join(dataDirectory, 'case.json'), 'utf8')).resolves.toContain('case-black-portfolio');
   });
 });

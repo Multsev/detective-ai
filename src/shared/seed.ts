@@ -5,6 +5,8 @@ export function createSeedCase(): InvestigationCase {
     id: 'case-black-portfolio',
     caseNumber: 1,
     subject: 'Иван Морозов',
+    defaultSubjectEntityId: 'ivan-morozov',
+    researchSubjectEntityId: 'ivan-morozov',
     title: 'Дело № 0001 — Иван Морозов',
     subtitle: '«Чёрный портфель» · учебное расследование',
     updatedAt: new Date().toISOString(),

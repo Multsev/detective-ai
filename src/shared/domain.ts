@@ -97,6 +97,8 @@ export interface InvestigationCase {
   id: string;
   caseNumber: number;
   subject: string;
+  defaultSubjectEntityId?: string;
+  researchSubjectEntityId?: string;
   title: string;
   subtitle: string;
   entities: InvestigationEntity[];

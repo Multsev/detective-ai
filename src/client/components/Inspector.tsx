@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, ContactRound, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Bot, ContactRound, Crosshair, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
 import { IconButton, Select } from '@operator-ui/framework';
 import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
@@ -11,13 +11,14 @@ interface InspectorProps {
   sources: SourceReference[];
   aiConfigured: boolean;
   research?: EntityResearchState;
+  researchSubject?: InvestigationEntity;
   onAddFact: (kind: CaseFact['kind'], text: string) => void;
   onAddRelation: (targetId: string, label: string) => void;
   onResearch: (question: string, file?: File) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
   const [entryText, setEntryText] = useState('');
   const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
   const [researchQuestion, setResearchQuestion] = useState('');
@@ -95,6 +96,7 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
 
       <section className="research-box">
         <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>
+        {researchSubject && <div className="research-subject-context"><Crosshair size={12} /><span>{researchSubject.id === entity.id ? 'Текущий объект дела' : 'Исследование в отношении'}</span><strong>{researchSubject.title}</strong></div>}
         {research && <div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? 'Идёт работа' : research.status === 'completed' ? 'Последнее исследование готово' : 'Исследование завершилось с ошибкой'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div>}
         <label className="research-source-select"><span>Источник</span><Select value={researchMode} disabled={research?.status === 'running'} onChange={(event) => setResearchMode(event.target.value as 'web' | 'file')}><option value="web">Открытые источники</option><option value="file">PDF или Markdown-файл</option></Select></label>
         {researchMode === 'file' && <div className="research-file-picker">

@@ -43,9 +43,10 @@ process.stdin.on('end', () => {
 
     try {
       const investigationCase = createSeedCase();
+      investigationCase.researchSubjectEntityId = 'anna-lebedeva';
       const events: string[] = [];
       const result = await new CodexResearchRunner(executable, directory).investigate(
-        investigationCase.entities[0],
+        investigationCase.entities[2],
         investigationCase,
         '',
         (event) => event.type === 'status' && events.push(event.stage),
@@ -57,6 +58,9 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('проверь связи фокусной карточки');
       expect(prompt).toContain('$detective-osint');
       expect(prompt).toContain('Полный контекст текущего дела');
+      expect(prompt).toContain('Исследуемый объект дела');
+      expect(prompt).toContain('Анна Лебедева');
+      expect(prompt).toContain('Фокусная карточка является отдельной ветвью');
       expect(prompt).toContain('sourceIds');
       expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');
 
