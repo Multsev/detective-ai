@@ -31,6 +31,7 @@ button { cursor: pointer; }
 .global-search input { min-width: 0; width: 100%; color: #dfe4e8; border: 0; outline: 0; background: transparent; font-size: 11px; }
 .global-search input::placeholder { color: #5c6874; }
 .topbar__actions { display: flex; align-items: center; gap: 4px; margin-left:auto;min-width:0; }
+.topbar__actions .arrange-button{flex:0 0 auto;height:28px;gap:5px;padding:0 8px;color:#c5ccd3;background:#242f3b;border-color:rgba(255,255,255,.07)}.topbar__actions .arrange-button:hover:not(:disabled){background:#2b3845}.topbar__actions .arrange-button:disabled{opacity:.45;cursor:not-allowed}
 .save-state { color: #65717c; font: 500 8px DM Mono,monospace; white-space: nowrap; }
 .save-state--saving { color: #c79a50; }.save-state--error { color: #c85a62; }
 .ai-status { display: flex; align-items: center; gap: 5px; padding: 6px 8px; color: #8b9299; font-size: 9px; white-space: nowrap; border: 1px solid var(--border-dark); border-radius: 99px; }
@@ -109,5 +110,5 @@ button { cursor: pointer; }
 @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(211,167,95,0)}100%{box-shadow:0 0 0 0 rgba(211,167,95,0)}}
 @keyframes research-card-pulse{0%,100%{box-shadow:0 0 0 2px rgba(63,126,167,.5),0 12px 25px rgba(34,69,91,.25)}50%{box-shadow:0 0 0 5px rgba(63,126,167,.72),0 16px 34px rgba(34,69,91,.4)}}
 
-@media(max-width:1100px){.app-shell.has-inspector{grid-template-columns:minmax(0,1fr) 300px}.save-state{display:none}.ai-status{display:none}.compact-case-switcher{max-width:300px}.topbar-research{padding-inline:8px}.topbar-research{font-size:0}.topbar-research svg{margin:0}.secondary-button{font-size:0}.secondary-button svg{margin:0}}
+@media(max-width:1100px){.app-shell.has-inspector{grid-template-columns:minmax(0,1fr) 300px}.save-state{display:none}.ai-status{display:none}.compact-case-switcher{max-width:300px}.topbar-research{padding-inline:8px}.topbar-research{font-size:0}.topbar-research svg{margin:0}.secondary-button,.topbar__actions .arrange-button{font-size:0}.secondary-button svg,.topbar__actions .arrange-button svg{margin:0}.topbar__actions .arrange-button{width:28px;padding:0}}
 @media(max-width:850px){.global-search{display:none}.compact-case-switcher{max-width:360px}.settings-page{padding:20px}.settings-grid,.mcp-server-list{grid-template-columns:1fr}.evidence-legend-control{left:auto;right:12px}.evidence-legend-panel{left:auto;right:0}}

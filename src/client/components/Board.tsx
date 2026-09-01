@@ -29,13 +29,14 @@ interface BoardProps {
   autoFitResearch: boolean;
   researching: boolean;
   revealEntityRequest?: { entityId: string; key: number };
+  fitGraphRequestKey?: number;
   onSelectEntity: (entityId?: string) => void;
   onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
@@ -103,6 +104,7 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
           researching={researching}
         />
         <RevealEntity request={revealEntityRequest} />
+        <FitGraphOnRequest requestKey={fitGraphRequestKey} />
         <Background variant={BackgroundVariant.Dots} gap={16} size={1.4} color="rgba(84,55,31,.28)" />
         <Controls showInteractive={false} />
       </ReactFlow>
@@ -111,6 +113,21 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
       )}
     </div>
   );
+}
+
+function FitGraphOnRequest({ requestKey }: { requestKey?: number }) {
+  const { fitView } = useReactFlow<EntityFlowNode>();
+  const nodesInitialized = useNodesInitialized();
+
+  useEffect(() => {
+    if (requestKey === undefined || !nodesInitialized) return undefined;
+    const animationFrame = requestAnimationFrame(() => {
+      void fitView({ padding: 0.16, duration: 420, includeHiddenNodes: false });
+    });
+    return () => cancelAnimationFrame(animationFrame);
+  }, [fitView, nodesInitialized, requestKey]);
+
+  return null;
 }
 
 function RevealEntity({ request }: { request?: { entityId: string; key: number } }) {

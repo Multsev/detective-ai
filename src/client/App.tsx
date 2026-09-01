@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ContactRound, Plus, Search, ShieldCheck } from 'lucide-react';
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Select } from '@operator-ui/framework';
+import { Button, ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Select } from '@operator-ui/framework';
 import type {
   CaseSummary,
   CaseFact,
@@ -19,6 +19,7 @@ import { entityTypes } from '../shared/domain';
 import { api } from './lib/api';
 import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from './lib/graph';
 import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
+import { arrangeInvestigationGraph } from './lib/treeGraphLayout';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
 import { CreateCaseDialog } from './components/CreateCaseDialog';
@@ -54,6 +55,7 @@ export function App() {
   const [refreshingCodex, setRefreshingCodex] = useState(false);
   const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
   const [revealEntityRequest, setRevealEntityRequest] = useState<{ entityId: string; key: number }>();
+  const [fitGraphRequestKey, setFitGraphRequestKey] = useState<number>();
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [message, setMessage] = useState<string>();
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -280,6 +282,15 @@ export function App() {
     setMessage(`Карточка «${entity.title}» и ${relationCount} связ. удалены.`);
   }
 
+  function arrangeObjects() {
+    if (!investigationCase || investigationCase.entities.length === 0 || researching) return;
+    commit((current) => arrangeInvestigationGraph(current, selectedEntityId));
+    setFitGraphRequestKey((current) => (current ?? 0) + 1);
+    setMessage(selectedEntity
+      ? `Граф расставлен деревом от карточки «${selectedEntity.title}».`
+      : 'Объекты расставлены как связные деревья.');
+  }
+
   async function refreshCodexStatus() {
     setRefreshingCodex(true);
     try {
@@ -346,6 +357,7 @@ export function App() {
               else { setPage('settings'); setMessage(googleStatus.configured ? 'Сначала подключите аккаунт Google.' : 'Сначала настройте OAuth-клиент Google.'); }
             }}><ContactRound size={16} />Контакты</button>
             <button className="secondary-button" onClick={() => setShowAddDialog(true)}><Plus size={16} />Карточка</button>
+            <Button className="arrange-button" icon="network" disabled={researching || investigationCase.entities.length === 0} onClick={arrangeObjects}>Расставить</Button>
             <button className="primary-button topbar-research" disabled={!selectedEntity || !health.codex.ready || Boolean(selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running')} onClick={() => research('')}><ShieldCheck size={16} />{selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running' ? 'В работе…' : 'Найти связи'}</button>
             <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
           </div>
@@ -359,6 +371,7 @@ export function App() {
           autoFitResearch={autoFitResearch}
           researching={researching}
           revealEntityRequest={revealEntityRequest}
+          fitGraphRequestKey={fitGraphRequestKey}
           onSelectEntity={(id) => { setSelectedEntityId(id); setSelectedRelationId(undefined); }}
           onOpenEntityMenu={(entityId, position) => setEntityMenu({ entityId, ...position })}
           onSelectRelation={(relation) => { setSelectedRelationId(relation.id); setSelectedEntityId(undefined); }}
