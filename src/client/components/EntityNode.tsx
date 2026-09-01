@@ -5,7 +5,7 @@ import type { EntityResearchState, InvestigationEntity } from '../../shared/doma
 import type { EntityProvenance } from '../lib/entityProvenance';
 import { formatTemporalDate } from '../lib/entityProvenance';
 
-export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; provenance: EntityProvenance; reducedDetail: boolean }, 'entity'>;
+export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; isActiveSelection: boolean; provenance: EntityProvenance; reducedDetail: boolean }, 'entity'>;
 
 const iconByType = {
   person: UserRound,
@@ -28,14 +28,14 @@ const labelByType = {
 };
 
 function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
-  const { entity, research, isResearchSubject, provenance, reducedDetail } = data;
+  const { entity, research, isResearchSubject, isActiveSelection, provenance, reducedDetail } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const occurredAtLabel = formatTemporalDate(entity.occurredAt);
   const primaryAttributes = (entity.attributes ?? []).slice(0, 2);
 
   return (
-    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
+    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isActiveSelection ? ' is-active-selection' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
       <Handle type="target" position={Position.Left} className="entity-handle" title="Отпустите здесь, чтобы связать карточки" aria-label="Вход связи" />
       <span className="pushpin" />
       {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}

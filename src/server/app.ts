@@ -82,6 +82,15 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
     }
   });
 
+  app.post('/api/cases/import', async (request, response, next) => {
+    try {
+      const investigationCase = request.body as InvestigationCase;
+      response.status(201).json(await options.store.importCase(investigationCase));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/cases/:caseId', async (request, response, next) => {
     try {
       response.json(await options.store.load(request.params.caseId));

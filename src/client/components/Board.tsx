@@ -14,7 +14,7 @@ import {
   type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { EntityResearchState, EntityType, InvestigationCase, InvestigationRelation } from '../../shared/domain';
+import type { EntityResearchState, EntityType, EvidenceStatus, InvestigationCase, InvestigationRelation } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { getResearchSubjectEntityId } from '../../shared/caseSubject';
 import { isEntityVisible } from '../lib/graph';
@@ -27,22 +27,29 @@ const nodeTypes = { entity: EntityNode };
 
 interface BoardProps {
   investigationCase: InvestigationCase;
-  selectedEntityId?: string;
+  selectedEntityIds: ReadonlySet<string>;
+  activeEntityId?: string;
   visibleTypes: ReadonlySet<EntityType>;
+  visibleEvidenceStatuses: ReadonlySet<EvidenceStatus>;
+  onlySubjectNetwork: boolean;
   search: string;
   researchByEntityId: Readonly<Record<string, EntityResearchState>>;
   autoFitResearch: boolean;
   researching: boolean;
   revealEntityRequest?: { entityId: string; key: number };
   fitGraphRequestKey?: number;
-  onSelectEntity: (entityId?: string) => void;
+  onSelectEntity: (entityId: string, additive: boolean) => void;
+  onClearSelection: () => void;
+  onOpenEntity: (entityId: string) => void;
   onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
+  onOpenPaneMenu: (position: { x: number; y: number }) => void;
+  onOpenAddEntity: () => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onConnectEntities: (sourceId: string, targetId: string) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onOpenEntityMenu, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, onlySubjectNetwork, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, fitGraphRequestKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const [viewportZoom, setViewportZoom] = useState(1);
@@ -50,14 +57,23 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
   const denseGraph = isDenseGraph(investigationCase.entities.length, investigationCase.relations.length);
   const reducedDetail = shouldReduceGraphDetail(investigationCase.entities.length, investigationCase.relations.length, viewportZoom);
   const provenanceByEntityId = useMemo(() => buildEntityProvenanceIndex(investigationCase), [investigationCase.entities, investigationCase.relations, investigationCase.sources]);
+  const subjectNetworkIds = useMemo(() => {
+    if (!onlySubjectNetwork) return undefined;
+    const ids = new Set([researchSubjectEntityId]);
+    for (const relation of investigationCase.relations) {
+      if (relation.sourceId === researchSubjectEntityId) ids.add(relation.targetId);
+      if (relation.targetId === researchSubjectEntityId) ids.add(relation.sourceId);
+    }
+    return ids;
+  }, [investigationCase.relations, onlySubjectNetwork, researchSubjectEntityId]);
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail },
-    selected: entity.id === selectedEntityId,
-    hidden: !isEntityVisible(entity, visibleTypes, search),
-  })), [investigationCase.entities, provenanceByEntityId, reducedDetail, researchByEntityId, researchSubjectEntityId, search, selectedEntityId, visibleTypes]);
+    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, isActiveSelection: entity.id === activeEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail },
+    selected: selectedEntityIds.has(entity.id),
+    hidden: !isEntityVisible(entity, visibleTypes, search) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)),
+  })), [activeEntityId, investigationCase.entities, provenanceByEntityId, reducedDetail, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];
@@ -74,8 +90,9 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
       labelBgPadding: [7, 4] as [number, number],
       labelBgBorderRadius: 4,
       data: { relation },
+      hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))),
     };
-  }), [denseGraph, investigationCase.relations, reducedDetail]);
+  }), [denseGraph, investigationCase.relations, reducedDetail, subjectNetworkIds, visibleEvidenceStatuses]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityFlowNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
@@ -83,10 +100,10 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
   useEffect(() => setNodes((current) => reconcileFlowNodes(current, flowNodes)), [flowNodes, setNodes]);
   useEffect(() => setEdges(flowEdges), [flowEdges, setEdges]);
 
-  const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (_event, node) => onSelectEntity(node.id === selectedEntityId ? undefined : node.id);
+  const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (event, node) => onSelectEntity(node.id, event.shiftKey || event.ctrlKey || event.metaKey);
 
   return (
-    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`}>
+    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`} onDoubleClick={(event) => { if ((event.target as HTMLElement).classList.contains('react-flow__pane')) onOpenAddEntity(); }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -99,12 +116,13 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
           setIsNavigating(false);
         }}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={(_event, node) => onOpenEntity(node.id)}
         onNodeContextMenu={(event, node) => {
           event.preventDefault();
-          onSelectEntity(node.id);
           onOpenEntityMenu(node.id, { x: event.clientX, y: event.clientY });
         }}
-        onPaneClick={() => onSelectEntity(undefined)}
+        onPaneClick={onClearSelection}
+        onPaneContextMenu={(event) => { event.preventDefault(); onOpenPaneMenu({ x: event.clientX, y: event.clientY }); }}
         onNodeDragStop={(_event, node) => onMoveEntity(node.id, node.position)}
         onConnect={(connection: Connection) => {
           if (connection.source && connection.target) onConnectEntities(connection.source, connection.target);

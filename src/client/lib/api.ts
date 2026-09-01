@@ -45,6 +45,7 @@ export const api = {
   listCases: () => request<CaseSummary[]>('/api/cases'),
   loadCase: (caseId: string) => request<InvestigationCase>(`/api/cases/${caseId}`),
   createCase: (input: CreateCaseInput) => request<InvestigationCase>('/api/cases', { method: 'POST', body: JSON.stringify(input) }),
+  importCase: (investigationCase: InvestigationCase) => request<InvestigationCase>('/api/cases/import', { method: 'POST', body: JSON.stringify(investigationCase) }),
   saveCase: (investigationCase: InvestigationCase) => request<InvestigationCase>(`/api/cases/${investigationCase.id}`, {
     method: 'PUT',
     body: JSON.stringify(investigationCase),

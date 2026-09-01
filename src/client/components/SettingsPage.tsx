@@ -9,6 +9,10 @@ interface SettingsPageProps {
   refreshing: boolean;
   autoFitResearch: boolean;
   onAutoFitResearchChange: (enabled: boolean) => void;
+  autoOpenInspector: boolean;
+  onAutoOpenInspectorChange: (enabled: boolean) => void;
+  autoSave: boolean;
+  onAutoSaveChange: (enabled: boolean) => void;
   googleStatus: GoogleIntegrationStatus;
   disconnectingGoogle: boolean;
   onDisconnectGoogle: () => void;
@@ -16,7 +20,7 @@ interface SettingsPageProps {
   onOpenBoard: () => void;
 }
 
-export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
+export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, autoOpenInspector, onAutoOpenInspectorChange, autoSave, onAutoSaveChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
   const { codex } = health;
   const [mcpSettings, setMcpSettings] = useState<McpSettingsView>();
   const [saving, setSaving] = useState(false);
@@ -76,6 +80,8 @@ export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitRes
             onChange={(event) => onAutoFitResearchChange(event.target.checked)}
             label="Автоматически вписывать новые связи"
           />
+          <Checkbox checked={autoOpenInspector} onChange={(event) => onAutoOpenInspectorChange(event.target.checked)} label="Автоматически открывать инспектор при выборе" />
+          <Checkbox checked={autoSave} onChange={(event) => onAutoSaveChange(event.target.checked)} label="Автоматически сохранять изменения" />
           <p className="settings-card__hint">Пока Codex добавляет карточки и связи, вся видимая схема остаётся в границах доски. После завершения масштаб снова управляется только вручную.</p>
         </article>
 

@@ -99,6 +99,26 @@ export class CaseStore {
     return this.writeCase(investigationCase);
   }
 
+  async importCase(investigationCase: InvestigationCase): Promise<InvestigationCase> {
+    await this.ensureInitialized();
+    if (!investigationCase || !Array.isArray(investigationCase.entities) || !Array.isArray(investigationCase.relations) || !Array.isArray(investigationCase.sources)) {
+      throw new Error('Некорректная структура импортируемого дела.');
+    }
+    const subject = investigationCase.subject?.trim() || investigationCase.entities[0]?.title?.trim() || 'Импортированное расследование';
+    const summaries = await this.list();
+    const importedNumber = Number.isSafeInteger(investigationCase.caseNumber) && investigationCase.caseNumber > 0
+      ? investigationCase.caseNumber
+      : Math.max(0, ...summaries.map((item) => item.caseNumber)) + 1;
+    const id = isSafeCaseId(investigationCase.id) ? investigationCase.id : createCaseId(importedNumber, subject);
+    return this.writeCase({
+      ...investigationCase,
+      id,
+      caseNumber: importedNumber,
+      subject,
+      title: investigationCase.title?.trim() || createCaseTitle(importedNumber, subject),
+    });
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
     await mkdir(this.casesDirectory, { recursive: true });

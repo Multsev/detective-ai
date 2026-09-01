@@ -51,6 +51,18 @@ describe('CaseStore', () => {
     expect(await readFile(secondFile, 'utf8')).toBe(secondBefore);
   });
 
+  it('imports a versioned case payload without losing graph data', async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const store = new CaseStore(dataDirectory);
+    const source = createSeedCase();
+    const imported = await store.importCase({ ...source, title: 'Дело из файла' });
+
+    expect(imported.title).toBe('Дело из файла');
+    expect(imported.entities).toHaveLength(source.entities.length);
+    expect(imported.relations).toHaveLength(source.relations.length);
+    await expect(store.load(imported.id)).resolves.toMatchObject({ title: 'Дело из файла' });
+  });
+
   it('migrates the legacy single file without deleting it', async () => {
     const dataDirectory = await createTemporaryDirectory();
     const legacyCase = createSeedCase();
