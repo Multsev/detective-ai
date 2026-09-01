@@ -1,7 +1,9 @@
-import type { EntityAttribute, EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, QuestionDetails, ResearchEntityAttribute, ResearchResult } from '../../shared/domain';
+import type { CaseChange, EntityAttribute, EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, QuestionDetails, ResearchEntityAttribute, ResearchResult, SourceReference } from '../../shared/domain';
 import { normalizeCaseSubject } from '../../shared/caseSubject';
 import { attributeIdentityKey } from '../../shared/entityAttributeCatalog';
 import { getQuestionDetails, normalizeCaseQuestions } from '../../shared/questions';
+import { appendCaseChanges, buildCaseChanges } from '../../shared/caseChanges';
+import { refreshSourceReference } from '../../shared/sourceFreshness';
 
 export interface ResearchMergeOutcome {
   investigationCase: InvestigationCase;
@@ -13,6 +15,8 @@ export interface ResearchMergeOutcome {
   updatedRelationCount: number;
   addedAttributeCount: number;
   updatedEntityCount: number;
+  updatedSourceCount: number;
+  changes: CaseChange[];
   hasNewInformation: boolean;
 }
 
@@ -33,7 +37,7 @@ export function mergeQuestionResolutionResult(
   result: ResearchResult,
   researchRunId: string,
 ): QuestionResolutionMergeOutcome {
-  const base = mergeResearchResultWithOutcome(investigationCase, questionEntity, result);
+  const base = mergeResearchResultWithOutcome(investigationCase, questionEntity, result, researchRunId);
   const proposal = result.questionResolution;
   const current = getQuestionDetails(questionEntity, investigationCase);
   if (!current) throw new Error('Карточка вопроса не найдена.');
@@ -77,12 +81,15 @@ export function mergeQuestionResolutionResult(
     resolvedByEntityIds: [...new Set([...current.resolvedByEntityIds, ...resolvedRelations.flatMap((relation) => [relation.sourceId, relation.targetId]).filter((id) => id !== questionEntity.id)])],
     resolvedAt: status === 'answered' ? now : undefined,
   };
+  const resolvedCase = {
+    ...base.investigationCase,
+    entities: base.investigationCase.entities.map((entity) => entity.id === questionEntity.id ? { ...entity, question } : entity),
+  };
+  const questionChanges = buildCaseChanges(base.investigationCase, resolvedCase, researchRunId, now);
   return {
     ...base,
-    investigationCase: {
-      ...base.investigationCase,
-      entities: base.investigationCase.entities.map((entity) => entity.id === questionEntity.id ? { ...entity, question } : entity),
-    },
+    investigationCase: appendCaseChanges(resolvedCase, questionChanges),
+    changes: [...base.changes, ...questionChanges],
     question,
   };
 }
@@ -187,12 +194,14 @@ export function mergeResearchResultWithOutcome(
   investigationCase: InvestigationCase,
   focusEntity: InvestigationEntity,
   result: ResearchResult,
+  researchRunId?: string,
 ): ResearchMergeOutcome {
   const sourceAliases = new Map<string, string>();
   const existingSourcesById = new Map(investigationCase.sources.map((source) => [source.id, source]));
   const existingSourcesByUrl = new Map(investigationCase.sources.map((source) => [sourceIdentityKey(source.url), source]));
   const candidateSourcesById = new Map<string, ResearchResult['sources'][number]>();
   const candidateSourcesByUrl = new Map<string, ResearchResult['sources'][number]>();
+  const sourceUpdates = new Map<string, SourceReference>();
 
   for (const source of result.sources) {
     const existing = existingSourcesById.get(source.id) ?? existingSourcesByUrl.get(sourceIdentityKey(source.url));
@@ -200,6 +209,15 @@ export function mergeResearchResultWithOutcome(
     const canonical = existing ?? duplicateCandidate;
     if (canonical) {
       sourceAliases.set(source.id, canonical.id);
+      if (existing) {
+        const previousCheck = (existing.lastCheckedAt || existing.accessedAt).slice(0, 10);
+        const metadataChanged = Boolean(source.publishedAt && source.publishedAt !== existing.publishedAt)
+          || (!existing.title && Boolean(source.title)) || (!existing.publisher && Boolean(source.publisher));
+        if (metadataChanged || source.accessedAt > previousCheck) {
+          const refreshedInput = metadataChanged ? { ...source, id: existing.id, url: existing.url } : { ...existing, accessedAt: source.accessedAt };
+          sourceUpdates.set(existing.id, refreshSourceReference(existing, refreshedInput, source.accessedAt));
+        }
+      }
       continue;
     }
     sourceAliases.set(source.id, source.id);
@@ -274,11 +292,15 @@ export function mergeResearchResultWithOutcome(
     const existing = existingRelationsById.get(claim.id) ?? existingRelationsByIdentity.get(identity);
     if (existing) {
       const sourceIds = [...new Set([...existing.sourceIds, ...claim.sourceIds])];
-      if (sourceIds.length !== existing.sourceIds.length) {
+      const shouldRefreshEvidence = sourceIds.length !== existing.sourceIds.length
+        || claim.confidence > existing.confidence
+        || (claim.status === 'contradicted' && existing.status !== 'contradicted')
+        || (!existing.occurredAt && Boolean(claim.occurredAt));
+      if (shouldRefreshEvidence) {
         relationUpdates.set(existing.id, {
           ...existing,
           sourceIds,
-          ...(claim.confidence > existing.confidence ? { confidence: claim.confidence, status: claim.status, explanation: claim.explanation } : {}),
+          ...(claim.confidence > existing.confidence || claim.status === 'contradicted' ? { confidence: claim.confidence, status: claim.status, explanation: claim.explanation } : {}),
           occurredAt: existing.occurredAt ?? (claim.occurredAt || undefined),
         });
       }
@@ -332,7 +354,15 @@ export function mergeResearchResultWithOutcome(
     ...acceptedEntities.flatMap((entity) => (entity.attributes ?? []).flatMap((attribute) => attribute.sourceIds)),
     ...(result.questionResolution?.sourceIds ?? []).map((sourceId) => sourceAliases.get(sourceId) ?? sourceId),
   ]);
-  const acceptedSources = [...candidateSourcesById.values()].filter((source) => usedSourceIds.has(source.id));
+  const acceptedSources = [...candidateSourcesById.values()].filter((source) => usedSourceIds.has(source.id)).map((source) => refreshSourceReference(undefined, source, source.accessedAt));
+  const updatedSourceContentCount = [...sourceUpdates].filter(([id, source]) => {
+    const previous = existingSourcesById.get(id);
+    return previous ? sourceMetadataKey(previous) !== sourceMetadataKey(source) : false;
+  }).length;
+  const updatedSourceContentIds = new Set([...sourceUpdates].filter(([id, source]) => {
+    const previous = existingSourcesById.get(id);
+    return previous ? sourceMetadataKey(previous) !== sourceMetadataKey(source) : false;
+  }).map(([id]) => id));
   const currentFocus = investigationCase.entities.find((entity) => entity.id === focusEntity.id) ?? focusEntity;
   const questionScope = (ids?: string[]) => [...new Set((ids?.length ? ids : [currentFocus.id]).map((id) => entityAliases.get(id) ?? id).filter((id) => validIds.has(id)))];
   const existingQuestions = new Set([
@@ -354,7 +384,7 @@ export function mergeResearchResultWithOutcome(
     warningKeys.add(key);
     return true;
   });
-  const hasNewInformation = acceptedEntities.length > 0 || acceptedRelations.length > 0 || acceptedSources.length > 0 || relationUpdates.size > 0 || acceptedQuestions.length > 0 || addedAttributeCount > 0;
+  const hasNewInformation = acceptedEntities.length > 0 || acceptedRelations.length > 0 || acceptedSources.length > 0 || relationUpdates.size > 0 || acceptedQuestions.length > 0 || addedAttributeCount > 0 || updatedSourceContentCount > 0;
   const deduplicatedResult: ResearchResult = {
     ...result,
     summary: hasNewInformation ? result.summary : 'Новых сведений по сравнению с материалами дела не найдено.',
@@ -365,7 +395,7 @@ export function mergeResearchResultWithOutcome(
     })),
     claims: acceptedClaims,
     questions: acceptedQuestions,
-    sources: acceptedSources,
+    sources: [...acceptedSources, ...[...sourceUpdates.values()].filter((source) => updatedSourceContentIds.has(source.id))],
     warnings: acceptedWarnings,
   };
 
@@ -410,7 +440,7 @@ export function mergeResearchResultWithOutcome(
       createdBy: 'ai',
     }));
   });
-  const mergedCase = normalizeCaseQuestions({
+  const mergedWithoutChanges = normalizeCaseQuestions({
     ...investigationCase,
     entities: [
       ...investigationCase.entities.map((entity) => {
@@ -425,8 +455,11 @@ export function mergeResearchResultWithOutcome(
       ...acceptedRelations,
       ...acceptedQuestionRelations,
     ],
-    sources: [...investigationCase.sources, ...acceptedSources],
+    sources: [...investigationCase.sources.map((source) => sourceUpdates.get(source.id) ?? source), ...acceptedSources],
   });
+  const detectedAt = new Date().toISOString();
+  const changes = buildCaseChanges(investigationCase, mergedWithoutChanges, researchRunId, detectedAt);
+  const mergedCase = appendCaseChanges(mergedWithoutChanges, changes);
   return {
     investigationCase: mergedCase,
     result: deduplicatedResult,
@@ -437,6 +470,8 @@ export function mergeResearchResultWithOutcome(
     updatedRelationCount: relationUpdates.size,
     addedAttributeCount,
     updatedEntityCount: entityAttributeUpdates.size,
+    updatedSourceCount: sourceUpdates.size,
+    changes,
     hasNewInformation,
   };
 }
@@ -488,6 +523,10 @@ function sourceIdentityKey(value: string): string {
   } catch {
     return normalizeIdentityText(value);
   }
+}
+
+function sourceMetadataKey(source: Pick<SourceReference, 'title' | 'url' | 'publisher' | 'publishedAt'>): string {
+  return [source.title, source.url, source.publisher, source.publishedAt].join('\u0000');
 }
 
 function normalizeIdentityText(value: string): string {

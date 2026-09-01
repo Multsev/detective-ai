@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, ContactRound, FileText, FileUp, IdCard, Plus, Search, StickyNote, Trash2 } from 'lucide-react';
 import { Button, IconButton, PlainTextEditor, Select, TextField } from '../ui';
-import type { CaseMaterial, EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, ResearchRun, SourceReference } from '../../shared/domain';
+import type { CaseChange, CaseMaterial, EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, ResearchRun, SourceReference } from '../../shared/domain';
 import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { formatTemporalDate, type EntityProvenance } from '../lib/entityProvenance';
 import { researchFileAccept, researchFileFormatSummary } from '../../shared/researchFileTypes';
+import { getSourceFreshness } from '../../shared/sourceFreshness';
 
 interface InspectorProps {
   entity?: InvestigationEntity;
@@ -16,11 +17,13 @@ interface InspectorProps {
   provenance?: EntityProvenance;
   materials: CaseMaterial[];
   researchRuns: ResearchRun[];
+  changes: CaseChange[];
   onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
   onAddFileMaterial: (file: File) => void;
   onAddNoteMaterial: (name: string, content: string) => void;
   onRemoveMaterial: (materialId: string) => void;
   onUpdateRelation: (input: { label: string; explanation: string }) => void;
+  onMarkChangesRead: (changeIds: string[]) => void;
   onClose: () => void;
 }
 
@@ -28,7 +31,16 @@ const materialStatusLabels: Record<CaseMaterial['status'], string> = {
   pending: 'Новое', processing: 'Обрабатывается', processed: 'Обработано', changed: 'Изменено', error: 'Ошибка',
 };
 
-export function Inspector({ entity, relation, allEntities, sources, research, provenance, materials, researchRuns, onAddAttribute, onAddFileMaterial, onAddNoteMaterial, onRemoveMaterial, onUpdateRelation, onClose }: InspectorProps) {
+function sourceFreshnessLabel(source: SourceReference): string {
+  const status = getSourceFreshness(source);
+  if (status === 'static') return 'статический источник';
+  if (status === 'due') return 'требует повторной проверки';
+  if (status === 'unknown') return 'свежесть неизвестна';
+  const checkedAt = source.lastCheckedAt || source.accessedAt;
+  return checkedAt ? `проверено ${new Date(checkedAt.length <= 10 ? `${checkedAt}T00:00:00` : checkedAt).toLocaleDateString('ru-RU')}` : 'проверено';
+}
+
+export function Inspector({ entity, relation, allEntities, sources, research, provenance, materials, researchRuns, changes, onAddAttribute, onAddFileMaterial, onAddNoteMaterial, onRemoveMaterial, onUpdateRelation, onMarkChangesRead, onClose }: InspectorProps) {
   const [relationLabel, setRelationLabel] = useState('');
   const [relationExplanation, setRelationExplanation] = useState('');
   const [attributeKey, setAttributeKey] = useState('');
@@ -74,6 +86,7 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
           <strong>{Math.round(relation.confidence * 100)}%</strong>
         </div>
         <section className="inspector-section"><h3>Почему связь показана</h3><p className="body-copy">{relation.explanation}</p></section>
+        {changes.length > 0 && <section className="inspector-section relation-changes-section"><div className="section-heading"><h3>Что нового</h3><span>{changes.filter((change) => !change.readAt).length || changes.length}</span></div>{changes.filter((change) => !change.readAt).length > 0 && <Button onClick={() => onMarkChangesRead(changes.filter((change) => !change.readAt).map((change) => change.id))}>Отметить прочитанным</Button>}<div className="entity-changes-list">{changes.slice(0, 8).map((change) => <article className={change.readAt ? 'is-read' : 'is-unread'} key={change.id}><small>{new Date(change.detectedAt).toLocaleString('ru-RU')}</small><strong>{change.summary}</strong>{change.fields.length > 0 && <dl>{change.fields.map((field) => <div key={field.field}><dt>{field.field}</dt><dd>{field.before && <del>{field.before}</del>}{field.after && <ins>{field.after}</ins>}</dd></div>)}</dl>}</article>)}</div></section>}
         <section className="inspector-section">
           <h3>Источники</h3>
           {relation.sourceIds.length === 0 && <p className="muted-copy">Источник пока не прикреплён.</p>}
@@ -82,7 +95,7 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
             if (!source) return null;
             return source.kind === 'uploaded_file' || source.kind === 'google_contact'
               ? <div className="source-link source-link--file" key={id}><span>{source.kind === 'google_contact' ? <ContactRound size={13} /> : <FileText size={13} />}{source.title}</span><small>{source.kind === 'google_contact' ? 'личный контакт' : 'загруженный файл'}</small></div>
-              : <a className="source-link" href={source.url} target="_blank" rel="noreferrer" key={id}><span>{source.title}</span>{source.publishedAt && <small>{formatTemporalDate(source.publishedAt)}</small>}<ArrowUpRight size={13} /></a>;
+              : <a className={`source-link is-${getSourceFreshness(source)}`} href={source.url} target="_blank" rel="noreferrer" key={id}><span>{source.title}</span><small>{source.publishedAt ? `${formatTemporalDate(source.publishedAt)} · ` : ''}{sourceFreshnessLabel(source)}</small><ArrowUpRight size={13} /></a>;
           })}
         </section>
       </aside>
@@ -102,6 +115,7 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
   const entityDate = formatTemporalDate(entity.occurredAt);
   const attributeDefinitions = getEntityAttributeDefinitions(entity.type);
   const selectedAttributeDefinition = attributeDefinitions.find((definition) => definition.key === attributeKey) ?? attributeDefinitions[0];
+  const unreadChanges = changes.filter((change) => !change.readAt);
 
   return (
     <aside className="inspector">
@@ -115,12 +129,21 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
         <dl><div><dt>Критерий ответа</dt><dd>{entity.question.successCriteria}</dd></div><div><dt>Попыток</dt><dd>{entity.question.researchRunIds.length}</dd></div></dl>
         {entity.question.answer && <div className="question-details__answer"><strong>Ответ</strong><p>{entity.question.answer}</p></div>}
       </section>}
+      {changes.length > 0 && <details className="inspector-section entity-changes-section" open={unreadChanges.length > 0}>
+        <summary><span>Что нового</span><small>{unreadChanges.length ? `${unreadChanges.length} новых` : changes.length}</small></summary>
+        {unreadChanges.length > 0 && <div className="entity-changes-toolbar"><Button onClick={() => onMarkChangesRead(unreadChanges.map((change) => change.id))}>Отметить прочитанным</Button></div>}
+        <div className="entity-changes-list">{changes.slice(0, 12).map((change) => <article className={change.readAt ? 'is-read' : 'is-unread'} key={change.id}><small>{new Date(change.detectedAt).toLocaleString('ru-RU')}</small><strong>{change.summary}</strong>{change.fields.length > 0 && <dl>{change.fields.slice(0, 4).map((field) => <div key={field.field}><dt>{field.field}</dt><dd>{field.before && <del>{field.before}</del>}{field.after && <ins>{field.after}</ins>}</dd></div>)}</dl>}</article>)}</div>
+      </details>}
       {entityDate && <div className="inspector-object-date"><CalendarDays size={12} /><span>Дата объекта</span><time dateTime={entity.occurredAt}>{entityDate}</time></div>}
       {provenance && <div className="inspector-entity-sources" aria-label="Источники карточки">
         <strong>Источник</strong>
-        {provenance.sources.length > 0 ? provenance.sources.map((source) => source.href
-          ? <a href={source.href} target="_blank" rel="noreferrer" title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}<ArrowUpRight size={9} /></a>
-          : <span title={source.title} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}</span>)
+        {provenance.sources.length > 0 ? provenance.sources.map((source) => {
+          const reference = sourceById.get(source.id);
+          const freshness = reference ? sourceFreshnessLabel(reference) : '';
+          return source.href
+            ? <a href={source.href} target="_blank" rel="noreferrer" title={`${source.title}${freshness ? ` · ${freshness}` : ''}`} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}{freshness && <em>{freshness}</em>}<ArrowUpRight size={9} /></a>
+            : <span title={`${source.title}${freshness ? ` · ${freshness}` : ''}`} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}{freshness && <em>{freshness}</em>}</span>;
+        })
           : <span title={provenance.primary.title}>{provenance.primary.label}</span>}
       </div>}
 
@@ -191,7 +214,7 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
 
       {researchRuns.length > 0 && <details className="inspector-section research-history-section">
         <summary><span>История исследований</span><small>{researchRuns.length}</small></summary>
-        <div className="research-history-list">{researchRuns.slice(0, 8).map((run) => <div className={`research-history-row is-${run.status}`} key={run.id}><span>{run.status === 'completed' ? '✓' : run.status === 'error' ? '!' : '…'}</span><div><strong>{run.includeWeb ? 'Материалы и открытые источники' : 'Материалы карточки'}</strong><small>{new Date(run.startedAt).toLocaleString('ru-RU')} · {run.summary || run.errorMessage || 'Выполняется'}</small></div></div>)}</div>
+        <div className="research-history-list">{researchRuns.slice(0, 8).map((run) => <div className={`research-history-row is-${run.status}`} key={run.id}><span>{run.status === 'completed' ? '✓' : run.status === 'error' ? '!' : '…'}</span><div><strong>{run.mode === 'relationships' ? 'Поиск связи' : run.mode === 'question_resolution' ? 'Проверка вопроса' : run.includeWeb ? 'Материалы и открытые источники' : 'Материалы карточки'}{run.changeIds.length ? ` · ${run.changeIds.length} изм.` : ''}</strong><small>{new Date(run.startedAt).toLocaleString('ru-RU')} · {run.summary || run.errorMessage || 'Выполняется'}</small></div></div>)}</div>
       </details>}
 
       {research && <section className="research-box"><div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Идёт поиск связи' : 'Идёт поиск информации') : research.status === 'completed' ? 'Исследование завершено' : 'Ошибка исследования'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div></section>}

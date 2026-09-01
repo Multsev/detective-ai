@@ -77,6 +77,8 @@ describe('CaseStore', () => {
     expect(migrated.subject).toBe('Иван Морозов');
     expect(migrated.defaultSubjectEntityId).toBe('ivan-morozov');
     expect(migrated.researchSubjectEntityId).toBe('ivan-morozov');
+    expect(migrated.changes).toEqual([]);
+    expect(migrated.sources[0]).toMatchObject({ checkCount: 1 });
     await expect(readFile(path.join(dataDirectory, 'case.json'), 'utf8')).resolves.toContain('case-black-portfolio');
   });
 });

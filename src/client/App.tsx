@@ -45,6 +45,8 @@ import { getDefaultMotionLevel, isMotionLevel, motionDuration, motionDurations, 
 import { getEntityMaterials, getEntityResearchRuns, getPendingEntityMaterials } from '../shared/researchMemory';
 import { researchFileAccept } from '../shared/researchFileTypes';
 import { QuestionAnswerDialog } from './components/QuestionAnswerDialog';
+import { UpdateCenter } from './components/UpdateCenter';
+import { getEntityCaseChanges, getUnreadCaseChanges, markCaseChangesRead } from '../shared/caseChanges';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type EntityMotionState = 'updated' | 'no-change' | 'error';
@@ -68,6 +70,7 @@ export function App() {
   const [visibleEvidenceStatuses, setVisibleEvidenceStatuses] = useState<Set<EvidenceStatus>>(() => new Set(evidenceStatuses));
   const [visibleQuestionStatuses, setVisibleQuestionStatuses] = useState<Set<QuestionStatus>>(() => new Set(questionStatuses));
   const [onlySubjectNetwork, setOnlySubjectNetwork] = useState(false);
+  const [onlyWithUnreadChanges, setOnlyWithUnreadChanges] = useState(false);
   const [search, setSearch] = useState('');
   const [searchVisible, setSearchVisible] = useState(false);
   const [autoFitResearch, setAutoFitResearch] = useState(() => appPersistence.get<boolean>('detective:auto-fit-research', true, (value): value is boolean => typeof value === 'boolean'));
@@ -110,6 +113,13 @@ export function App() {
   const motionFeedbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const researching = Object.values(researchByEntityId).some((research) => research.status === 'running');
   const runningEntityIds = useMemo(() => new Set(Object.values(researchByEntityId).filter((research) => research.status === 'running').map((research) => research.entityId)), [researchByEntityId]);
+  const recentChanges = useMemo(() => [...(investigationCase?.changes ?? [])].sort((left, right) => right.detectedAt.localeCompare(left.detectedAt)), [investigationCase?.changes]);
+  const unreadChanges = useMemo(() => investigationCase ? getUnreadCaseChanges(investigationCase) : [], [investigationCase]);
+  const unreadChangeCountByEntity = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const change of unreadChanges) for (const entityId of change.entityIds) counts.set(entityId, (counts.get(entityId) ?? 0) + 1);
+    return counts;
+  }, [unreadChanges]);
 
   useEffect(() => {
     appPersistence.set('detective:auto-fit-research', autoFitResearch);
@@ -155,11 +165,11 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!selectedEntity || isEntityVisible(selectedEntity, visibleTypes, search, visibleQuestionStatuses)) return;
+    if (!selectedEntity || (isEntityVisible(selectedEntity, visibleTypes, search, visibleQuestionStatuses) && (!onlyWithUnreadChanges || unreadChangeCountByEntity.has(selectedEntity.id)))) return;
     entitySelection.clear();
     setInspectorEntityId(undefined);
     setSelectedRelationId(undefined);
-  }, [entitySelection, search, selectedEntity, visibleQuestionStatuses, visibleTypes]);
+  }, [entitySelection, onlyWithUnreadChanges, search, selectedEntity, unreadChangeCountByEntity, visibleQuestionStatuses, visibleTypes]);
 
   useEffect(() => {
     if (!investigationCase) return;
@@ -509,6 +519,7 @@ export function App() {
       nextSteps: [],
       addedEntityIds: [],
       addedRelationIds: [],
+      changeIds: [],
       summary: '',
     };
     const initialResearch: EntityResearchState = {
@@ -523,6 +534,7 @@ export function App() {
     const addedRelationIds = new Set<string>();
     const checkedUrls = new Set<string>();
     const nextSteps = new Set<string>();
+    const changeIds = new Set<string>();
     const summaries: string[] = [];
     let activeMaterialId: string | undefined;
     try {
@@ -545,10 +557,12 @@ export function App() {
         const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
         const previousEntityIds = new Set(latestCase.entities.map((entity) => entity.id));
         const previousRelationIds = new Set(latestCase.relations.map((relation) => relation.id));
-        const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
+        const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult, runId);
+        outcome.changes.forEach((change) => changeIds.add(change.id));
         outcome.investigationCase.entities.filter((entity) => !previousEntityIds.has(entity.id)).forEach((entity) => addedEntityIds.add(entity.id));
         outcome.investigationCase.relations.filter((relation) => !previousRelationIds.has(relation.id)).forEach((relation) => addedRelationIds.add(relation.id));
         outcome.result.sources.map((source) => source.url).filter((url) => /^https?:\/\//.test(url)).forEach((url) => checkedUrls.add(url));
+        outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url).filter((url): url is string => Boolean(url && /^https?:\/\//.test(url))).forEach((url) => checkedUrls.add(url));
         outcome.result.questions.forEach((item) => nextSteps.add(item.text));
         if (outcome.result.summary && !summaries.includes(outcome.result.summary)) summaries.push(outcome.result.summary);
         totals.attributes += outcome.addedAttributeCount;
@@ -597,6 +611,7 @@ export function App() {
         nextSteps: [...nextSteps],
         addedEntityIds: [...addedEntityIds],
         addedRelationIds: [...addedRelationIds],
+        changeIds: [...changeIds],
         summary: summaries.at(-1) ?? (hasNewInformation ? 'Материалы дела дополнены.' : 'Новых сведений не найдено.'),
       } : candidate) });
       showEntityMotion([focusEntityId], hasNewInformation ? 'updated' : 'no-change');
@@ -651,6 +666,7 @@ export function App() {
       return;
     }
     const normalizedQuestion = question.trim() || 'Найди и проверь прямые и косвенные связи между выбранными объектами во всех доступных источниках.';
+    const runId = `research-${crypto.randomUUID()}`;
     const startedAt = new Date().toISOString();
     const titleList = focusEntities.map((entity) => `«${entity.title}»`).join(', ');
     const states = Object.fromEntries(focusEntities.map((entity) => [entity.id, {
@@ -667,7 +683,12 @@ export function App() {
     setResearchByEntityId((current) => ({ ...current, ...states }));
     setShowFindRelationships(false);
     setMessage(undefined);
+    const run: ResearchRun = {
+      id: runId, mode: 'relationships', entityIds: uniqueEntityIds, question: normalizedQuestion, includeWeb: true, status: 'running', startedAt,
+      inputMaterials: [], checkedUrls: [], attemptedQueries: [normalizedQuestion], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '',
+    };
     try {
+      await persistResearchCase({ ...(investigationCaseRef.current ?? investigationCase), researchRuns: [...((investigationCaseRef.current ?? investigationCase).researchRuns ?? []), run].slice(-100) });
       let streamedResult: EntityResearchState['result'];
       const onEvent = (event: ResearchStreamEvent) => {
         if (event.type === 'status') {
@@ -683,8 +704,22 @@ export function App() {
       if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
       const latestCase = investigationCaseRef.current ?? investigationCase;
       const currentFocus = latestCase.entities.find((entity) => entity.id === uniqueEntityIds[0]) ?? focusEntities[0];
-      const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
-      if (outcome.hasNewInformation) commit(() => outcome.investigationCase);
+      const previousEntityIds = new Set(latestCase.entities.map((entity) => entity.id));
+      const previousRelationIds = new Set(latestCase.relations.map((relation) => relation.id));
+      const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult, runId);
+      const finishedAt = new Date().toISOString();
+      const completedCase = {
+        ...outcome.investigationCase,
+        researchRuns: (outcome.investigationCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
+          ...candidate, status: 'completed' as const, finishedAt,
+          checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)),
+          nextSteps: outcome.result.questions.map((item) => item.text),
+          addedEntityIds: outcome.investigationCase.entities.filter((entity) => !previousEntityIds.has(entity.id)).map((entity) => entity.id),
+          addedRelationIds: outcome.investigationCase.relations.filter((relation) => !previousRelationIds.has(relation.id)).map((relation) => relation.id),
+          changeIds: outcome.changes.map((change) => change.id), summary: outcome.result.summary,
+        } : candidate),
+      };
+      await persistResearchCase(completedCase);
       showEntityMotion(uniqueEntityIds, outcome.hasNewInformation ? 'updated' : 'no-change');
       const completionMessage = outcome.addedRelationCount || outcome.updatedRelationCount
         ? `Связи найдены: добавлено ${outcome.addedRelationCount}, обновлено ${outcome.updatedRelationCount}; новых объектов: ${outcome.addedEntityCount}.`
@@ -697,6 +732,9 @@ export function App() {
       setMessage(`${titleList}: ${completionMessage}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось найти связи.';
+      const failedAt = new Date().toISOString();
+      const latest = investigationCaseRef.current ?? investigationCase;
+      try { await persistResearchCase({ ...latest, researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: '' } : candidate) }); } catch { /* Основная ошибка важнее фиксации статуса. */ }
       showEntityMotion(uniqueEntityIds, 'error');
       setResearchByEntityId((current) => {
         const next = { ...current };
@@ -718,7 +756,7 @@ export function App() {
     const startedAt = new Date().toISOString();
     const run: ResearchRun = {
       id: runId, mode: 'question_resolution', entityIds: [questionId, ...details.aboutEntityIds], question: questionEntity.title,
-      includeWeb: true, status: 'running', startedAt, inputMaterials: [], checkedUrls: [], attemptedQueries: [questionEntity.title], nextSteps: [], addedEntityIds: [], addedRelationIds: [], summary: '',
+      includeWeb: true, status: 'running', startedAt, inputMaterials: [], checkedUrls: [], attemptedQueries: [questionEntity.title], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '',
     };
     const state: EntityResearchState = { entityId: questionId, mode: 'question_resolution', entityIds: run.entityIds, status: 'running', stage: 'starting', message: 'Проверяю вопрос и критерий ответа.', question: questionEntity.title, startedAt, source: 'web' };
     setResearchByEntityId((current) => ({ ...current, [questionId]: state }));
@@ -746,7 +784,7 @@ export function App() {
       const saved = {
         ...outcome.investigationCase,
         researchRuns: (outcome.investigationCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
-          ...candidate, status: 'completed' as const, finishedAt, checkedUrls: outcome.result.sources.map((source) => source.url).filter((url) => /^https?:\/\//.test(url)), nextSteps: outcome.result.questions.map((item) => item.text), addedEntityIds, addedRelationIds, summary: outcome.result.summary,
+          ...candidate, status: 'completed' as const, finishedAt, checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)), nextSteps: outcome.result.questions.map((item) => item.text), addedEntityIds, addedRelationIds, changeIds: outcome.changes.map((change) => change.id), summary: outcome.result.summary,
         } : candidate),
       };
       await persistResearchCase(saved);
@@ -938,6 +976,18 @@ export function App() {
     }
   }
 
+  function markChangesRead(changeIds: string[]) {
+    if (changeIds.length === 0) return;
+    commit((current) => markCaseChangesRead(current, changeIds), false);
+  }
+
+  function openUpdateEntity(entityId: string) {
+    const current = investigationCaseRef.current;
+    if (!current?.entities.some((entity) => entity.id === entityId)) return;
+    entitySelection.select(entityId, current.entities.map((entity) => entity.id));
+    setSelectedRelationId(undefined); setInspectorEntityId(entityId); setRevealEntityRequest({ entityId, key: Date.now() });
+  }
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (page !== 'board') return;
@@ -950,7 +1000,7 @@ export function App() {
       if (command && key === 'n') { event.preventDefault(); if (!researching) setShowCreateCaseDialog(true); return; }
       if (command && key === 'f') { event.preventDefault(); setSearchVisible(true); return; }
       if (editing) return;
-      if (command && key === 'a' && investigationCase) { event.preventDefault(); entitySelection.selectAll(investigationCase.entities.filter((entity) => isEntityVisible(entity, visibleTypes, search)).map((entity) => entity.id)); return; }
+      if (command && key === 'a' && investigationCase) { event.preventDefault(); entitySelection.selectAll(investigationCase.entities.filter((entity) => isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses) && (!onlyWithUnreadChanges || unreadChangeCountByEntity.has(entity.id))).map((entity) => entity.id)); return; }
       if (command && key === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
       if (event.key === 'Delete' && selectedEntityIds.size > 0 && !researching) { event.preventDefault(); setPendingDeleteEntityIds([...selectedEntityIds]); return; }
       if (event.key === 'Insert') { event.preventDefault(); setShowAddDialog(true); return; }
@@ -1018,7 +1068,7 @@ export function App() {
     { label: 'Отменить', shortcut: 'Ctrl+Z', disabled: undoStack.current.length === 0, action: undo },
     { label: 'Повторить', shortcut: 'Ctrl+Shift+Z', disabled: redoStack.current.length === 0, action: redo },
     { type: 'separator' },
-    { label: 'Выбрать всё', shortcut: 'Ctrl+A', action: () => entitySelection.selectAll(investigationCase.entities.filter((entity) => isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses)).map((entity) => entity.id)) },
+    { label: 'Выбрать всё', shortcut: 'Ctrl+A', action: () => entitySelection.selectAll(investigationCase.entities.filter((entity) => isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses) && (!onlyWithUnreadChanges || unreadChangeCountByEntity.has(entity.id))).map((entity) => entity.id)) },
     { label: 'Снять выделение', shortcut: 'Esc', disabled: selectedEntityIds.size === 0, action: clearSelection },
     { label: 'Удалить выбранное…', shortcut: 'Delete', disabled: selectedEntityIds.size === 0 || researching, action: () => setPendingDeleteEntityIds([...selectedEntityIds]) },
   ];
@@ -1045,6 +1095,7 @@ export function App() {
           <div className="topbar__actions">
             <span className={`save-state save-state--${saveState}`} title={saveState === 'error' ? 'Ошибка сохранения' : saveState === 'dirty' ? 'Есть несохранённые изменения' : 'Дело сохранено'}>{saveState === 'saving' ? 'Сохраняем…' : saveState === 'error' ? 'Ошибка' : saveState === 'dirty' ? 'Изменено' : ''}</span>
             <ResearchQueueControl codex={health.codex} research={researchByEntityId} entities={investigationCase.entities} />
+            <UpdateCenter changes={recentChanges} entities={investigationCase.entities} onOpenEntity={openUpdateEntity} onMarkRead={(changeId) => markChangesRead([changeId])} onMarkAllRead={() => markChangesRead(unreadChanges.map((change) => change.id))} />
             <IconButton icon="search" label="Найти на доске" aria-expanded={searchVisible} onClick={() => setSearchVisible((current) => !current)} />
             <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
           </div>
@@ -1058,6 +1109,8 @@ export function App() {
           visibleEvidenceStatuses={visibleEvidenceStatuses}
           visibleQuestionStatuses={visibleQuestionStatuses}
           onlySubjectNetwork={onlySubjectNetwork}
+          onlyWithUnreadChanges={onlyWithUnreadChanges}
+          unreadChangeCountByEntity={unreadChangeCountByEntity}
           search={search}
           researchByEntityId={researchByEntityId}
           entityMotionById={entityMotionById}
@@ -1085,7 +1138,7 @@ export function App() {
         {linkMode && <div className="link-mode-bar"><Link2 size={14} /><span>{linkSource ? `Источник: ${linkSource.title}` : 'Выберите исходную карточку'}{linkTargets.length ? ` · целей: ${linkTargets.length}` : ' · затем выберите связанные объекты'}</span><button disabled={!linkSource || linkTargets.length === 0} onClick={() => setShowManualLinkDialog(true)}>Enter — создать</button><button onClick={() => { setLinkMode(false); setLinkSourceId(undefined); setLinkTargetIds([]); }}>Esc — отменить</button></div>}
         <div className="board-tools" aria-label="Инструменты доски">
           <button className={`board-tool-button ${linkMode ? 'is-active' : ''}`} aria-label="Ручная связь" aria-pressed={linkMode} onClick={() => { if (linkMode) { setLinkMode(false); setLinkSourceId(undefined); setLinkTargetIds([]); } else startManualLink(); }} title="Ручная связь"><Link2 size={14} /></button>
-          <DisplayControl investigationCase={displayedCase} visibleTypes={visibleTypes} visibleEvidenceStatuses={visibleEvidenceStatuses} visibleQuestionStatuses={visibleQuestionStatuses} onlySubjectNetwork={onlySubjectNetwork} openRequest={displayOpenRequest} onToggleType={toggleLayer} onToggleEvidence={toggleEvidence} onToggleQuestionStatus={toggleQuestionStatus} onOnlySubjectNetworkChange={setOnlySubjectNetwork} onReset={() => { setVisibleTypes(new Set(entityTypes)); setVisibleEvidenceStatuses(new Set(evidenceStatuses)); setVisibleQuestionStatuses(new Set(questionStatuses)); setOnlySubjectNetwork(false); }} />
+          <DisplayControl investigationCase={displayedCase} visibleTypes={visibleTypes} visibleEvidenceStatuses={visibleEvidenceStatuses} visibleQuestionStatuses={visibleQuestionStatuses} onlySubjectNetwork={onlySubjectNetwork} onlyWithUnreadChanges={onlyWithUnreadChanges} openRequest={displayOpenRequest} onToggleType={toggleLayer} onToggleEvidence={toggleEvidence} onToggleQuestionStatus={toggleQuestionStatus} onOnlySubjectNetworkChange={setOnlySubjectNetwork} onOnlyWithUnreadChangesChange={setOnlyWithUnreadChanges} onReset={() => { setVisibleTypes(new Set(entityTypes)); setVisibleEvidenceStatuses(new Set(evidenceStatuses)); setVisibleQuestionStatuses(new Set(questionStatuses)); setOnlySubjectNetwork(false); setOnlyWithUnreadChanges(false); }} />
         </div>
         {message && <button className="toast" onClick={() => setMessage(undefined)}>{message}<span>×</span></button>}
       </section>
@@ -1098,11 +1151,13 @@ export function App() {
         provenance={inspectorEntity ? getEntityProvenance(displayedCase, inspectorEntity) : undefined}
         materials={inspectorEntity ? getEntityMaterials(displayedCase, inspectorEntity.id) : []}
         researchRuns={inspectorEntity ? getEntityResearchRuns(displayedCase, inspectorEntity.id) : []}
+        changes={inspectorEntity ? getEntityCaseChanges(displayedCase, inspectorEntity.id) : selectedRelation ? recentChanges.filter((change) => change.targetType === 'relation' && change.targetId === selectedRelation.id) : []}
         onAddAttribute={addAttribute}
         onAddFileMaterial={(file) => void addFileMaterial(file)}
         onAddNoteMaterial={(name, content) => void addNoteMaterial(name, content)}
         onRemoveMaterial={(materialId) => void removeMaterial(materialId)}
         onUpdateRelation={updateSelectedRelation}
+        onMarkChangesRead={markChangesRead}
         onClose={() => { setInspectorEntityId(undefined); setSelectedRelationId(undefined); }}
       />}
       </>}

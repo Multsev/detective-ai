@@ -22,6 +22,10 @@ export interface SourceReference {
   publishedAt: string;
   accessedAt: string;
   kind?: 'web' | 'uploaded_file' | 'google_contact';
+  lastCheckedAt?: string;
+  nextCheckAt?: string;
+  checkCount?: number;
+  lastChangedAt?: string;
 }
 
 export interface GoogleContactValue {
@@ -193,8 +197,33 @@ export interface ResearchRun {
   nextSteps: string[];
   addedEntityIds: string[];
   addedRelationIds: string[];
+  changeIds: string[];
   summary: string;
   errorMessage?: string;
+}
+
+export const caseChangeKinds = ['entity_added', 'entity_updated', 'question_updated', 'relation_added', 'relation_updated', 'source_added', 'source_rechecked', 'source_updated'] as const;
+export type CaseChangeKind = (typeof caseChangeKinds)[number];
+export type CaseChangeTargetType = 'entity' | 'relation' | 'source';
+
+export interface CaseFieldChange {
+  field: string;
+  before?: string;
+  after?: string;
+}
+
+export interface CaseChange {
+  id: string;
+  researchRunId?: string;
+  kind: CaseChangeKind;
+  targetType: CaseChangeTargetType;
+  targetId: string;
+  entityIds: string[];
+  title: string;
+  summary: string;
+  fields: CaseFieldChange[];
+  detectedAt: string;
+  readAt?: string;
 }
 
 export interface InvestigationCase {
@@ -210,6 +239,7 @@ export interface InvestigationCase {
   sources: SourceReference[];
   materials?: CaseMaterial[];
   researchRuns?: ResearchRun[];
+  changes?: CaseChange[];
   updatedAt: string;
 }
 

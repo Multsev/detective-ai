@@ -5,7 +5,7 @@ import type { EntityResearchState, InvestigationEntity } from '../../shared/doma
 import type { EntityProvenance } from '../lib/entityProvenance';
 import { formatTemporalDate } from '../lib/entityProvenance';
 
-export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; isResearchSubject: boolean; isActiveSelection: boolean; provenance: EntityProvenance; reducedDetail: boolean; entering: boolean; removing: boolean; motionState?: 'updated' | 'no-change' | 'error' }, 'entity'>;
+export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState; unreadChangeCount: number; isResearchSubject: boolean; isActiveSelection: boolean; provenance: EntityProvenance; reducedDetail: boolean; entering: boolean; removing: boolean; motionState?: 'updated' | 'no-change' | 'error' }, 'entity'>;
 
 const iconByType = {
   person: UserRound,
@@ -28,7 +28,7 @@ const labelByType = {
 };
 
 function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
-  const { entity, research, isResearchSubject, isActiveSelection, provenance, reducedDetail, entering, removing, motionState } = data;
+  const { entity, research, unreadChangeCount, isResearchSubject, isActiveSelection, provenance, reducedDetail, entering, removing, motionState } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const occurredAtLabel = formatTemporalDate(entity.occurredAt);
@@ -41,6 +41,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
     <article className={`entity-card entity-card--${entity.type}${questionStatus ? ` question-${questionStatus}` : ''}${compactResolvedQuestion ? ' is-question-compact' : ''}${selected ? ' is-selected' : ''}${isActiveSelection ? ' is-active-selection' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}${entering ? ' is-entering' : ''}${removing ? ' is-removing' : ''}${motionState ? ` motion-${motionState}` : ''}`}>
       <Handle type="target" position={Position.Left} className="entity-handle" title="Отпустите здесь, чтобы связать карточки" aria-label="Вход связи" />
       {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}
+      {unreadChangeCount > 0 && <span className="entity-card__update-badge" title={`Непрочитанных обновлений: ${unreadChangeCount}`} aria-label={`Непрочитанных обновлений: ${unreadChangeCount}`}>{unreadChangeCount > 99 ? '99+' : unreadChangeCount}</span>}
       <header className="entity-card__header">
         <div className="entity-card__portrait">
           {entity.type === 'person' ? initials : <Icon size={22} strokeWidth={1.7} />}

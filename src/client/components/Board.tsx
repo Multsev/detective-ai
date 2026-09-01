@@ -34,6 +34,8 @@ interface BoardProps {
   visibleEvidenceStatuses: ReadonlySet<EvidenceStatus>;
   visibleQuestionStatuses: ReadonlySet<QuestionStatus>;
   onlySubjectNetwork: boolean;
+  onlyWithUnreadChanges: boolean;
+  unreadChangeCountByEntity: ReadonlyMap<string, number>;
   search: string;
   researchByEntityId: Readonly<Record<string, EntityResearchState>>;
   entityMotionById: Readonly<Record<string, 'updated' | 'no-change' | 'error'>>;
@@ -55,7 +57,7 @@ interface BoardProps {
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, visibleQuestionStatuses, onlySubjectNetwork, search, researchByEntityId, entityMotionById, removingEntityIds, autoFitResearch, motionLevel, researching, revealEntityRequest, fitGraphRequestKey, layoutAnimationKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, visibleQuestionStatuses, onlySubjectNetwork, onlyWithUnreadChanges, unreadChangeCountByEntity, search, researchByEntityId, entityMotionById, removingEntityIds, autoFitResearch, motionLevel, researching, revealEntityRequest, fitGraphRequestKey, layoutAnimationKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const [viewportZoom, setViewportZoom] = useState(1);
@@ -108,10 +110,10 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, isActiveSelection: entity.id === activeEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail, entering: enteringEntityIds.has(entity.id), removing: removingEntityIds.has(entity.id), motionState: entityMotionById[entity.id] },
+    data: { entity, research: researchByEntityId[entity.id], unreadChangeCount: unreadChangeCountByEntity.get(entity.id) ?? 0, isResearchSubject: entity.id === researchSubjectEntityId, isActiveSelection: entity.id === activeEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail, entering: enteringEntityIds.has(entity.id), removing: removingEntityIds.has(entity.id), motionState: entityMotionById[entity.id] },
     selected: selectedEntityIds.has(entity.id),
-    hidden: !isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)),
-  })), [activeEntityId, enteringEntityIds, entityMotionById, investigationCase.entities, provenanceByEntityId, reducedDetail, removingEntityIds, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, visibleQuestionStatuses, visibleTypes]);
+    hidden: !isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)) || (onlyWithUnreadChanges && !unreadChangeCountByEntity.has(entity.id)),
+  })), [activeEntityId, enteringEntityIds, entityMotionById, investigationCase.entities, onlyWithUnreadChanges, provenanceByEntityId, reducedDetail, removingEntityIds, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, unreadChangeCountByEntity, visibleQuestionStatuses, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];
@@ -129,9 +131,9 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
       labelBgPadding: [7, 4] as [number, number],
       labelBgBorderRadius: 4,
       data: { relation },
-      hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))),
+      hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))) || Boolean(onlyWithUnreadChanges && (!unreadChangeCountByEntity.has(relation.sourceId) || !unreadChangeCountByEntity.has(relation.targetId))),
     };
-  }), [denseGraph, enteringRelationIds, investigationCase.relations, reducedDetail, removingEntityIds, subjectNetworkIds, visibleEvidenceStatuses]);
+  }), [denseGraph, enteringRelationIds, investigationCase.relations, onlyWithUnreadChanges, reducedDetail, removingEntityIds, subjectNetworkIds, unreadChangeCountByEntity, visibleEvidenceStatuses]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityFlowNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);

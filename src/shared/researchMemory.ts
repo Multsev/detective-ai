@@ -1,10 +1,13 @@
 import type { CaseMaterial, InvestigationCase, ResearchRun } from './domain.js';
+import { normalizeSourceFreshness } from './sourceFreshness.js';
 
 export function normalizeResearchMemory(investigationCase: InvestigationCase): InvestigationCase {
   return {
     ...investigationCase,
     materials: Array.isArray(investigationCase.materials) ? investigationCase.materials : [],
-    researchRuns: Array.isArray(investigationCase.researchRuns) ? investigationCase.researchRuns : [],
+    sources: investigationCase.sources.map(normalizeSourceFreshness),
+    researchRuns: Array.isArray(investigationCase.researchRuns) ? investigationCase.researchRuns.map((run) => ({ ...run, changeIds: Array.isArray(run.changeIds) ? run.changeIds : [] })) : [],
+    changes: Array.isArray(investigationCase.changes) ? investigationCase.changes : [],
   };
 }
 

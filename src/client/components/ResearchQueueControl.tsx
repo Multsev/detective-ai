@@ -20,7 +20,7 @@ export function ResearchQueueControl({ codex, research, entities }: { codex: Cod
     {open && <Panel className="research-queue-panel" title="Исследования" toolbar={<IconButton icon="error" label="Закрыть очередь исследований" onClick={() => setOpen(false)} />}>
       {tasks.length === 0 ? <p className="muted-copy">Исследования ещё не запускались.</p> : <div className="research-queue-list">{tasks.map((task) => {
         const names = task.entityIds.map((id) => entities.find((entity) => entity.id === id)?.title).filter(Boolean).join(', ');
-        return <div className={`research-queue-item is-${task.status}`} key={task.startedAt}><span>{task.status === 'running' ? <Bot size={12} /> : task.status === 'error' ? <X size={12} /> : '✓'}</span><div><strong>{task.mode === 'relationships' ? 'Поиск связи' : 'Поиск информации'}</strong><small title={names}>{names}</small><p>{task.message}</p></div></div>;
+        return <div className={`research-queue-item is-${task.status}`} key={task.startedAt}><span>{task.status === 'running' ? <Bot size={12} /> : task.status === 'error' ? <X size={12} /> : '✓'}</span><div><strong>{task.mode === 'relationships' ? 'Поиск связи' : task.mode === 'question_resolution' ? 'Проверка вопроса' : 'Поиск информации'}</strong><small title={names}>{names}</small><p>{task.message}</p></div></div>;
       })}</div>}
     </Panel>}
   </div>;
