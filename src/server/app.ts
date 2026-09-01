@@ -1,10 +1,11 @@
 import express from 'express';
 import path from 'node:path';
 import { z } from 'zod';
-import type { InvestigationCase } from '../shared/domain.js';
+import type { InvestigationCase, McpSettings } from '../shared/domain.js';
 import { detectCodex } from './codex/codexDetector.js';
 import { CaseStore } from './storage/caseStore.js';
 import { CodexResearchRunner } from './research/codexResearchRunner.js';
+import { McpSettingsStore } from './storage/mcpSettingsStore.js';
 
 const researchRequestSchema = z.object({
   caseId: z.string().min(1),
@@ -17,13 +18,37 @@ const createCaseSchema = z.object({
   entityType: z.enum(['person', 'company']),
 });
 
-export function createApp(options: { store: CaseStore }) {
+const mcpSettingsInputSchema = z.object({
+  servers: z.array(z.unknown()),
+  updatedAt: z.string().default(''),
+});
+
+export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSettingsStore }) {
   const app = express();
+  const mcpSettingsStore = options.mcpSettingsStore ?? new McpSettingsStore();
   app.use(express.json({ limit: '2mb' }));
 
   app.get(['/api/health', '/api/codex/status'], async (_request, response, next) => {
     try {
       response.json({ ok: true, codex: await detectCodex() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/mcp/settings', async (_request, response, next) => {
+    try {
+      response.json(await mcpSettingsStore.view());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put('/api/mcp/settings', async (request, response, next) => {
+    try {
+      const input = mcpSettingsInputSchema.parse(request.body);
+      await mcpSettingsStore.save(input as McpSettings);
+      response.json(await mcpSettingsStore.view());
     } catch (error) {
       next(error);
     }
@@ -82,13 +107,22 @@ export function createApp(options: { store: CaseStore }) {
         return;
       }
 
+      const mcpSettings = await mcpSettingsStore.load();
+      const mcpView = await mcpSettingsStore.view();
+      const unavailableEnabledServer = mcpSettings.servers.find((server) => server.enabled && !mcpView.readiness.find((item) => item.id === server.id)?.ready);
+      if (unavailableEnabledServer) {
+        const status = mcpView.readiness.find((item) => item.id === unavailableEnabledServer.id);
+        response.status(503).json({ error: `MCP «${unavailableEnabledServer.name}» не готов: ${status?.message ?? 'проверьте настройки.'}` });
+        return;
+      }
+
       response.status(200);
       response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
       response.setHeader('Cache-Control', 'no-cache, no-transform');
       response.setHeader('X-Accel-Buffering', 'no');
       response.flushHeaders();
       const emit = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
-      const runner = new CodexResearchRunner(codex.path);
+      const runner = new CodexResearchRunner(codex.path, process.cwd(), mcpSettings);
       const result = await runner.investigate(focusEntity, investigationCase, question, emit);
       emit({ type: 'result', result });
       response.end();

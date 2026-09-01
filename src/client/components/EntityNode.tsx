@@ -1,8 +1,8 @@
-import { Building2, CircleHelp, FileText, MapPin, NotebookPen, UserRound, CalendarDays } from 'lucide-react';
+import { Building2, CalendarDays, CheckCircle2, CircleHelp, FileText, LoaderCircle, MapPin, NotebookPen, TriangleAlert, UserRound } from 'lucide-react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import type { InvestigationEntity } from '../../shared/domain';
+import type { EntityResearchState, InvestigationEntity } from '../../shared/domain';
 
-export type EntityFlowNode = Node<{ entity: InvestigationEntity }, 'entity'>;
+export type EntityFlowNode = Node<{ entity: InvestigationEntity; research?: EntityResearchState }, 'entity'>;
 
 const iconByType = {
   person: UserRound,
@@ -25,13 +25,13 @@ const labelByType = {
 };
 
 export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
-  const { entity } = data;
+  const { entity, research } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const questions = entity.facts.filter((fact) => fact.kind === 'question').length;
 
   return (
-    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}`}>
+    <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${research ? ` research-${research.status}` : ''}`}>
       <Handle type="target" position={Position.Left} className="entity-handle" />
       <span className="pushpin" />
       <header className="entity-card__header">
@@ -45,6 +45,10 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
         </div>
       </header>
       <p className="entity-card__summary">{entity.summary}</p>
+      {research && <div className="entity-research-status" title={research.message}>
+        {research.status === 'running' ? <LoaderCircle size={12} className="spin" /> : research.status === 'completed' ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
+        <div><strong>{research.status === 'running' ? 'Codex исследует' : research.status === 'completed' ? 'Исследование готово' : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
+      </div>}
       <footer>
         <span>{entity.facts.length} факт.</span>
         {questions > 0 && <span className="question-count">{questions} вопрос.</span>}

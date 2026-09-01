@@ -10,7 +10,7 @@ import {
   type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { EntityType, InvestigationCase, InvestigationRelation } from '../../shared/domain';
+import type { EntityResearchState, EntityType, InvestigationCase, InvestigationRelation } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { isEntityVisible } from '../lib/graph';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
@@ -22,21 +22,22 @@ interface BoardProps {
   selectedEntityId?: string;
   visibleTypes: ReadonlySet<EntityType>;
   search: string;
+  researchByEntityId: Readonly<Record<string, EntityResearchState>>;
   onSelectEntity: (entityId?: string) => void;
   onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
     position: entity.position,
-    data: { entity },
+    data: { entity, research: researchByEntityId[entity.id] },
     selected: entity.id === selectedEntityId,
     hidden: !isEntityVisible(entity, visibleTypes, search),
-  })), [investigationCase.entities, search, selectedEntityId, visibleTypes]);
+  })), [investigationCase.entities, researchByEntityId, search, selectedEntityId, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];

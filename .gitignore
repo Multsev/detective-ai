@@ -5,4 +5,5 @@ dist-server/
 .DS_Store
 data/case.json
 data/cases/*.json
+data/mcp-settings.json
 *.log

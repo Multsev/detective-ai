@@ -130,6 +130,54 @@ export interface HealthStatus {
   codex: CodexStatus;
 }
 
+export type McpTransport = 'stdio' | 'http';
+
+export interface McpServerSetting {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  transport: McpTransport;
+  command: string;
+  args: string[];
+  url: string;
+  bearerTokenEnvVar: string;
+  envVars: string[];
+  requiredEnvVars: string[];
+  sourceUrl: string;
+  caution: string;
+  preset: boolean;
+}
+
+export interface McpServerReadiness {
+  id: string;
+  ready: boolean;
+  runtimeAvailable: boolean;
+  missingEnvVars: string[];
+  message: string;
+}
+
+export interface McpSettings {
+  servers: McpServerSetting[];
+  updatedAt: string;
+}
+
+export interface McpSettingsView extends McpSettings {
+  readiness: McpServerReadiness[];
+}
+
+export type EntityResearchStatus = 'running' | 'completed' | 'error';
+
+export interface EntityResearchState {
+  entityId: string;
+  status: EntityResearchStatus;
+  stage: string;
+  message: string;
+  question: string;
+  startedAt: string;
+  result?: ResearchResult;
+}
+
 export type ResearchStreamEvent =
   | { type: 'status'; stage: string; message: string }
   | { type: 'result'; result: ResearchResult }

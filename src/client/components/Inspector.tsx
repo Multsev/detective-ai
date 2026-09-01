@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, Bot, Link2, Plus, Search, Sparkles } from 'lucide-react';
 import { IconButton } from '@operator-ui/framework';
-import type { CaseFact, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
+import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 
 interface InspectorProps {
@@ -10,14 +10,14 @@ interface InspectorProps {
   allEntities: InvestigationEntity[];
   sources: SourceReference[];
   aiConfigured: boolean;
-  researching: boolean;
+  research?: EntityResearchState;
   onAddFact: (kind: CaseFact['kind'], text: string) => void;
   onAddRelation: (targetId: string, label: string) => void;
   onResearch: (question: string) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, researching, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
   const [entryText, setEntryText] = useState('');
   const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
   const [researchQuestion, setResearchQuestion] = useState('');
@@ -81,9 +81,10 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
 
       <section className="research-box">
         <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>
+        {research && <div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? 'Идёт работа' : research.status === 'completed' ? 'Последнее исследование готово' : 'Исследование завершилось с ошибкой'}</strong><span>{research.message}</span>{research.result && <p>{research.result.summary}</p>}</div>}
         <textarea value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)} placeholder="Что проверить? Например: найти связанные компании и официальные источники" />
-        <button className="primary-button" disabled={researching || !aiConfigured} onClick={() => onResearch(researchQuestion)}>
-          <Bot size={15} />{researching ? 'Идёт поиск…' : aiConfigured ? 'Исследовать' : 'Codex не готов'}
+        <button className="primary-button" disabled={research?.status === 'running' || !aiConfigured} onClick={() => onResearch(researchQuestion)}>
+          <Bot size={15} />{research?.status === 'running' ? 'Идёт поиск…' : aiConfigured ? research ? 'Исследовать снова' : 'Исследовать' : 'Codex не готов'}
         </button>
       </section>
 

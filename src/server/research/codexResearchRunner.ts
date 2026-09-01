@@ -2,10 +2,11 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { InvestigationCase, InvestigationEntity, ResearchResult, ResearchStreamEvent } from '../../shared/domain.js';
+import type { InvestigationCase, InvestigationEntity, McpServerSetting, McpSettings, ResearchResult, ResearchStreamEvent } from '../../shared/domain.js';
 import { researchJsonSchema, researchResultSchema } from './researchSchema.js';
 
 const investigatorInstructions = `
+Обязательно используй проектный навык $detective-osint.
 Ты — исследователь открытых источников для графа связей. Проведи живой поиск в интернете
 по указанной карточке и верни только JSON по предоставленной схеме.
 
@@ -25,6 +26,30 @@ contradicted — достоверные источники расходятся;
 Считай поиск продолжением текущего расследования: отдельно проверь связи фокусной карточки
 с уже существующими сущностями графа и верни новые подтверждаемые отношения в claims.
 `.trim();
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function tomlStringArray(values: string[]): string {
+  return `[${values.map(tomlString).join(',')}]`;
+}
+
+export function buildMcpConfigArgs(servers: McpServerSetting[]): string[] {
+  return servers.filter((server) => server.enabled).flatMap((server) => {
+    const prefix = `mcp_servers.${server.id}`;
+    const common = ['-c', `${prefix}.enabled=true`, '-c', `${prefix}.required=false`];
+    if (server.transport === 'http') {
+      return [...common, '-c', `${prefix}.url=${tomlString(server.url)}`, ...(server.bearerTokenEnvVar ? ['-c', `${prefix}.bearer_token_env_var=${tomlString(server.bearerTokenEnvVar)}`] : [])];
+    }
+    return [
+      ...common,
+      '-c', `${prefix}.command=${tomlString(server.command)}`,
+      '-c', `${prefix}.args=${tomlStringArray(server.args)}`,
+      ...(server.envVars.length ? ['-c', `${prefix}.env_vars=${tomlStringArray(server.envVars)}`] : []),
+    ];
+  });
+}
 
 function describeCliEvent(rawLine: string): ResearchStreamEvent | undefined {
   try {
@@ -49,7 +74,11 @@ function describeCliEvent(rawLine: string): ResearchStreamEvent | undefined {
 }
 
 export class CodexResearchRunner {
-  constructor(private readonly executablePath: string, private readonly workingDirectory = process.cwd()) {}
+  constructor(
+    private readonly executablePath: string,
+    private readonly workingDirectory = process.cwd(),
+    private readonly mcpSettings: McpSettings = { servers: [], updatedAt: '' },
+  ) {}
 
   async investigate(
     focusEntity: InvestigationEntity,
@@ -62,12 +91,19 @@ export class CodexResearchRunner {
     const outputPath = path.join(temporaryDirectory, 'research-result.json');
     await writeFile(schemaPath, JSON.stringify(researchJsonSchema), 'utf8');
 
-    const compactCase = {
+    const graphContext = {
+      id: investigationCase.id,
+      caseNumber: investigationCase.caseNumber,
+      subject: investigationCase.subject,
       title: investigationCase.title,
-      entities: investigationCase.entities.map(({ id, type, title, subtitle, summary }) => ({ id, type, title, subtitle, summary })),
-      relations: investigationCase.relations.map(({ sourceId, targetId, label, status }) => ({ sourceId, targetId, label, status })),
+      subtitle: investigationCase.subtitle,
+      updatedAt: investigationCase.updatedAt,
+      entities: investigationCase.entities,
+      relations: investigationCase.relations,
+      sources: investigationCase.sources,
     };
-    const prompt = `${investigatorInstructions}\n\nФокусная карточка:\n${JSON.stringify(focusEntity)}\n\nТекущий граф:\n${JSON.stringify(compactCase)}\n\nВопрос пользователя:\n${researchQuestion || 'Найди связанные компании, людей, документы, события и проверяемые отношения.'}`;
+    const enabledTools = this.mcpSettings.servers.filter((server) => server.enabled).map((server) => ({ id: server.id, name: server.name, description: server.description }));
+    const prompt = `${investigatorInstructions}\n\nПодключённые MCP-инструменты:\n${JSON.stringify(enabledTools)}\n\nФокусная карточка:\n${JSON.stringify(focusEntity)}\n\nПолный контекст текущего дела:\n${JSON.stringify(graphContext)}\n\nВопрос пользователя:\n${researchQuestion || 'Найди связанные компании, людей, документы, события и проверяемые отношения.'}`;
 
     emit({ type: 'status', stage: 'starting', message: 'Запускаю Codex CLI в безопасном режиме только для чтения.' });
 
@@ -77,14 +113,18 @@ export class CodexResearchRunner {
           '--search',
           '--ask-for-approval', 'never',
           'exec',
+          '--ignore-user-config',
           '--json',
           '--ephemeral',
           '--sandbox', 'read-only',
           '--cd', this.workingDirectory,
           '--output-schema', schemaPath,
           '--output-last-message', outputPath,
-          prompt,
-        ], { cwd: this.workingDirectory, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+          ...buildMcpConfigArgs(this.mcpSettings.servers),
+          '-',
+        ], { cwd: this.workingDirectory, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+
+        child.stdin.end(prompt);
 
         let stdoutBuffer = '';
         let stderrTail = '';
