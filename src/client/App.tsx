@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Plus, Search, ShieldCheck } from 'lucide-react';
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator, IconButton, Select } from '@operator-ui/framework';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Select } from '@operator-ui/framework';
 import type {
   CaseSummary,
   CaseFact,
@@ -39,6 +39,7 @@ export function App() {
   const [selectedRelationId, setSelectedRelationId] = useState<string>();
   const [visibleTypes, setVisibleTypes] = useState<Set<EntityType>>(() => new Set(entityTypes));
   const [search, setSearch] = useState('');
+  const [autoFitResearch, setAutoFitResearch] = useState(() => frameworkPersistence.get<boolean>('detective:auto-fit-research', true, (value): value is boolean => typeof value === 'boolean'));
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
   const [entityMenu, setEntityMenu] = useState<{ entityId: string; x: number; y: number }>();
@@ -49,6 +50,10 @@ export function App() {
   const [message, setMessage] = useState<string>();
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const researching = Object.values(researchByEntityId).some((research) => research.status === 'running');
+
+  useEffect(() => {
+    frameworkPersistence.set('detective:auto-fit-research', autoFitResearch);
+  }, [autoFitResearch]);
 
   useEffect(() => {
     Promise.all([api.listCases(), api.health()])
@@ -283,7 +288,7 @@ export function App() {
   return (
     <main className={`app-shell ${inspectorVisible ? 'has-inspector' : ''}`} data-theme="dark">
       {page === 'settings' ? (
-        <SettingsPage health={health} refreshing={refreshingCodex} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
+        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
       ) : <>
       <section className="workspace">
         <header className="topbar">
@@ -309,6 +314,8 @@ export function App() {
           visibleTypes={visibleTypes}
           search={search}
           researchByEntityId={researchByEntityId}
+          autoFitResearch={autoFitResearch}
+          researching={researching}
           onSelectEntity={(id) => { setSelectedEntityId(id); setSelectedRelationId(undefined); }}
           onOpenEntityMenu={(entityId, position) => setEntityMenu({ entityId, ...position })}
           onSelectRelation={(relation) => { setSelectedRelationId(relation.id); setSelectedEntityId(undefined); }}

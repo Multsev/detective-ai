@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -6,6 +6,7 @@ import {
   ReactFlow,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Edge,
   type NodeMouseHandler,
 } from '@xyflow/react';
@@ -13,6 +14,7 @@ import '@xyflow/react/dist/style.css';
 import type { EntityResearchState, EntityType, InvestigationCase, InvestigationRelation } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { isEntityVisible } from '../lib/graph';
+import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
 
 const nodeTypes = { entity: EntityNode };
@@ -23,13 +25,15 @@ interface BoardProps {
   visibleTypes: ReadonlySet<EntityType>;
   search: string;
   researchByEntityId: Readonly<Record<string, EntityResearchState>>;
+  autoFitResearch: boolean;
+  researching: boolean;
   onSelectEntity: (entityId?: string) => void;
   onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
@@ -86,10 +90,16 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
           if (relation) onSelectRelation(relation);
         }}
         fitView
-        minZoom={0.35}
+        minZoom={0.15}
         maxZoom={1.7}
         proOptions={{ hideAttribution: true }}
       >
+        <ResearchAutoFit
+          enabled={autoFitResearch}
+          entityCount={investigationCase.entities.length}
+          relationCount={investigationCase.relations.length}
+          researching={researching}
+        />
         <Background variant={BackgroundVariant.Dots} gap={16} size={1.4} color="rgba(84,55,31,.28)" />
         <Controls showInteractive={false} />
       </ReactFlow>
@@ -98,4 +108,28 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
       )}
     </div>
   );
+}
+
+function ResearchAutoFit({ enabled, entityCount, relationCount, researching }: {
+  enabled: boolean;
+  entityCount: number;
+  relationCount: number;
+  researching: boolean;
+}) {
+  const { fitView } = useReactFlow<EntityFlowNode>();
+  const previous = useRef<ResearchAutoFitState>({ entityCount, relationCount, researching });
+
+  useEffect(() => {
+    const current = { entityCount, relationCount, researching };
+    const shouldFit = shouldAutoFitResearchGraph(enabled, previous.current, current);
+    previous.current = current;
+    if (!shouldFit) return undefined;
+
+    const animationFrame = requestAnimationFrame(() => {
+      void fitView({ padding: 0.16, duration: 360, includeHiddenNodes: false });
+    });
+    return () => cancelAnimationFrame(animationFrame);
+  }, [enabled, entityCount, fitView, relationCount, researching]);
+
+  return null;
 }

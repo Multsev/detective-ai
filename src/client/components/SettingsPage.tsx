@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Check, CircleAlert, ExternalLink, PlugZap, RefreshCw, Save, Settings2, ShieldAlert, Terminal, X } from 'lucide-react';
+import { Check, CircleAlert, ExternalLink, Focus, PlugZap, RefreshCw, Save, Settings2, ShieldAlert, Terminal, X } from 'lucide-react';
+import { Checkbox } from '@operator-ui/framework';
 import type { HealthStatus, McpServerSetting, McpSettingsView } from '../../shared/domain';
 import { api } from '../lib/api';
 
 interface SettingsPageProps {
   health: HealthStatus;
   refreshing: boolean;
+  autoFitResearch: boolean;
+  onAutoFitResearchChange: (enabled: boolean) => void;
   onRefresh: () => void;
   onOpenBoard: () => void;
 }
 
-export function SettingsPage({ health, refreshing, onRefresh, onOpenBoard }: SettingsPageProps) {
+export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, onRefresh, onOpenBoard }: SettingsPageProps) {
   const { codex } = health;
   const [mcpSettings, setMcpSettings] = useState<McpSettingsView>();
   const [saving, setSaving] = useState(false);
@@ -61,6 +64,16 @@ export function SettingsPage({ health, refreshing, onRefresh, onOpenBoard }: Set
           <header><Settings2 size={18} /><div><h2>Авторизация</h2><p>Доступ к локальному агенту</p></div><StatusBadge ok={codex.authenticated} /></header>
           <dl><div><dt>Проверка</dt><dd>{codex.authMessage || 'Не выполнена'}</dd></div><div><dt>Обновлено</dt><dd>{codex.checkedAt ? new Date(codex.checkedAt).toLocaleString('ru-RU') : '—'}</dd></div></dl>
           {codex.installed && !codex.authenticated && <div className="setup-instruction"><code>codex login</code><span>Выполните команду в терминале, затем нажмите «Проверить».</span></div>}
+        </article>
+
+        <article className="settings-card board-behavior-settings">
+          <header><Focus size={18} /><div><h2>Поведение доски</h2><p>Масштаб во время исследования</p></div></header>
+          <Checkbox
+            checked={autoFitResearch}
+            onChange={(event) => onAutoFitResearchChange(event.target.checked)}
+            label="Автоматически вписывать новые связи"
+          />
+          <p className="settings-card__hint">Пока Codex добавляет карточки и связи, вся видимая схема остаётся в границах доски. После завершения масштаб снова управляется только вручную.</p>
         </article>
       </div>
 
