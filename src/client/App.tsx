@@ -483,7 +483,7 @@ export function App() {
         <header className="topbar">
           <div className="compact-case-switcher">
             <span className="brand__mark">D</span>
-            <Select className="case-select" value={investigationCase.id} disabled={researching} onChange={(event) => openCase(event.target.value)} aria-label="Текущее дело">
+            <Select className="case-select" value={investigationCase.id} disabled={researching} onChange={(event) => openCase(event.target.value)} aria-label="Текущее дело" title={investigationCase.title}>
               {caseSummaries.map((summary) => <option key={summary.id} value={summary.id}>{summary.title}</option>)}
             </Select>
             <IconButton icon="add" label="Создать новое дело" disabled={researching} onClick={() => setShowCreateCaseDialog(true)} />
@@ -522,8 +522,10 @@ export function App() {
           }))}
           onConnectEntities={connectCards}
         />
-        <LayerControl investigationCase={displayedCase} visibleTypes={visibleTypes} onToggle={toggleLayer} onShowAll={() => setVisibleTypes(new Set(entityTypes))} />
-        <EvidenceLegendControl />
+        <div className="board-tools" aria-label="Инструменты доски">
+          <LayerControl investigationCase={displayedCase} visibleTypes={visibleTypes} onToggle={toggleLayer} onShowAll={() => setVisibleTypes(new Set(entityTypes))} />
+          <EvidenceLegendControl />
+        </div>
         {message && <button className="toast" onClick={() => setMessage(undefined)}>{message}<span>×</span></button>}
       </section>
       {inspectorVisible && <Inspector
