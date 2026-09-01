@@ -55,12 +55,29 @@ export interface InvestigationRelation {
 
 export interface InvestigationCase {
   id: string;
+  caseNumber: number;
+  subject: string;
   title: string;
   subtitle: string;
   entities: InvestigationEntity[];
   relations: InvestigationRelation[];
   sources: SourceReference[];
   updatedAt: string;
+}
+
+export interface CaseSummary {
+  id: string;
+  caseNumber: number;
+  subject: string;
+  title: string;
+  updatedAt: string;
+  entityCount: number;
+  relationCount: number;
+}
+
+export interface CreateCaseInput {
+  subject: string;
+  entityType: 'person' | 'company';
 }
 
 export interface ResearchCandidateEntity {

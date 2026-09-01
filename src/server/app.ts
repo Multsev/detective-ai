@@ -7,8 +7,14 @@ import { CaseStore } from './storage/caseStore.js';
 import { CodexResearchRunner } from './research/codexResearchRunner.js';
 
 const researchRequestSchema = z.object({
+  caseId: z.string().min(1),
   entityId: z.string().min(1),
   question: z.string().max(1200).default(''),
+});
+
+const createCaseSchema = z.object({
+  subject: z.string().trim().min(1).max(160),
+  entityType: z.enum(['person', 'company']),
 });
 
 export function createApp(options: { store: CaseStore }) {
@@ -23,18 +29,34 @@ export function createApp(options: { store: CaseStore }) {
     }
   });
 
-  app.get('/api/case', async (_request, response, next) => {
+  app.get('/api/cases', async (_request, response, next) => {
     try {
-      response.json(await options.store.load());
+      response.json(await options.store.list());
     } catch (error) {
       next(error);
     }
   });
 
-  app.put('/api/case', async (request, response, next) => {
+  app.post('/api/cases', async (request, response, next) => {
+    try {
+      response.status(201).json(await options.store.create(createCaseSchema.parse(request.body)));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/cases/:caseId', async (request, response, next) => {
+    try {
+      response.json(await options.store.load(request.params.caseId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put('/api/cases/:caseId', async (request, response, next) => {
     try {
       const investigationCase = request.body as InvestigationCase;
-      if (!investigationCase?.id || !Array.isArray(investigationCase.entities) || !Array.isArray(investigationCase.relations)) {
+      if (!investigationCase?.id || investigationCase.id !== request.params.caseId || !Array.isArray(investigationCase.entities) || !Array.isArray(investigationCase.relations)) {
         response.status(400).json({ error: 'Некорректная структура дела.' });
         return;
       }
@@ -46,8 +68,8 @@ export function createApp(options: { store: CaseStore }) {
 
   app.post('/api/research/stream', async (request, response) => {
     try {
-      const { entityId, question } = researchRequestSchema.parse(request.body);
-      const investigationCase = await options.store.load();
+      const { caseId, entityId, question } = researchRequestSchema.parse(request.body);
+      const investigationCase = await options.store.load(caseId);
       const focusEntity = investigationCase.entities.find((entity) => entity.id === entityId);
       if (!focusEntity) {
         response.status(404).json({ error: 'Карточка для исследования не найдена.' });

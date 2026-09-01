@@ -1,4 +1,4 @@
-import type { HealthStatus, InvestigationCase, ResearchStreamEvent } from '../../shared/domain';
+import type { CaseSummary, CreateCaseInput, HealthStatus, InvestigationCase, ResearchStreamEvent } from '../../shared/domain';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -13,16 +13,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<HealthStatus>('/api/health'),
   refreshCodexStatus: () => request<HealthStatus>('/api/codex/status'),
-  loadCase: () => request<InvestigationCase>('/api/case'),
-  saveCase: (investigationCase: InvestigationCase) => request<InvestigationCase>('/api/case', {
+  listCases: () => request<CaseSummary[]>('/api/cases'),
+  loadCase: (caseId: string) => request<InvestigationCase>(`/api/cases/${caseId}`),
+  createCase: (input: CreateCaseInput) => request<InvestigationCase>('/api/cases', { method: 'POST', body: JSON.stringify(input) }),
+  saveCase: (investigationCase: InvestigationCase) => request<InvestigationCase>(`/api/cases/${investigationCase.id}`, {
     method: 'PUT',
     body: JSON.stringify(investigationCase),
   }),
-  async researchStream(entityId: string, question: string, onEvent: (event: ResearchStreamEvent) => void) {
+  async researchStream(caseId: string, entityId: string, question: string, onEvent: (event: ResearchStreamEvent) => void) {
     const response = await fetch('/api/research/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entityId, question }),
+      body: JSON.stringify({ caseId, entityId, question }),
     });
     if (!response.ok) {
       const payload = await response.json();

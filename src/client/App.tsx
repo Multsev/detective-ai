@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, Plus, Search, ShieldCheck } from 'lucide-react';
+import { IconButton, Select } from '@operator-ui/framework';
 import type {
+  CaseSummary,
   CaseFact,
+  CreateCaseInput,
   EntityType,
   HealthStatus,
   InvestigationCase,
@@ -9,19 +12,22 @@ import type {
   InvestigationRelation,
   ResearchResult,
 } from '../shared/domain';
+import { entityTypes } from '../shared/domain';
 import { api } from './lib/api';
 import { mergeResearchResult } from './lib/graph';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
+import { CreateCaseDialog } from './components/CreateCaseDialog';
 import { Inspector } from './components/Inspector';
+import { LayerControl } from './components/LayerControl';
 import { ResearchLivePanel } from './components/ResearchLivePanel';
 import { SettingsPage } from './components/SettingsPage';
-import { Sidebar } from './components/Sidebar';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function App() {
   const [investigationCase, setInvestigationCase] = useState<InvestigationCase>();
+  const [caseSummaries, setCaseSummaries] = useState<CaseSummary[]>([]);
   const [health, setHealth] = useState<HealthStatus>({
     ok: false,
     codex: { installed: false, authenticated: false, ready: false, path: '', version: '', authMessage: '', checkedAt: '' },
@@ -29,9 +35,10 @@ export function App() {
   const [page, setPage] = useState<'board' | 'settings'>('board');
   const [selectedEntityId, setSelectedEntityId] = useState<string>();
   const [selectedRelationId, setSelectedRelationId] = useState<string>();
-  const [filter, setFilter] = useState<EntityType | 'all'>('all');
+  const [visibleTypes, setVisibleTypes] = useState<Set<EntityType>>(() => new Set(entityTypes));
   const [search, setSearch] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
   const [researchResult, setResearchResult] = useState<ResearchResult>();
   const [previewCase, setPreviewCase] = useState<InvestigationCase>();
   const [researchLogs, setResearchLogs] = useState<string[]>([]);
@@ -43,8 +50,10 @@ export function App() {
   const [message, setMessage] = useState<string>();
 
   useEffect(() => {
-    Promise.all([api.loadCase(), api.health()])
-      .then(([loadedCase, healthStatus]) => {
+    Promise.all([api.listCases(), api.health()])
+      .then(async ([summaries, healthStatus]) => {
+        const loadedCase = await api.loadCase(summaries[0].id);
+        setCaseSummaries(summaries);
         setInvestigationCase(loadedCase);
         setHealth(healthStatus);
         if (!healthStatus.codex.ready) setPage('settings');
@@ -69,6 +78,12 @@ export function App() {
       void api.saveCase(next)
         .then((savedCase) => {
           setInvestigationCase((latest) => latest?.id === savedCase.id ? { ...latest, updatedAt: savedCase.updatedAt } : latest);
+          setCaseSummaries((summaries) => summaries.map((summary) => summary.id === savedCase.id ? {
+            ...summary,
+            updatedAt: savedCase.updatedAt,
+            entityCount: savedCase.entities.length,
+            relationCount: savedCase.relations.length,
+          } : summary));
           setSaveState('saved');
         })
         .catch((error: Error) => {
@@ -77,6 +92,36 @@ export function App() {
         });
       return next;
     });
+  }
+
+  async function openCase(caseId: string) {
+    if (researching) return;
+    try {
+      const loadedCase = await api.loadCase(caseId);
+      setInvestigationCase(loadedCase);
+      setSelectedEntityId(undefined);
+      setSelectedRelationId(undefined);
+      setPreviewCase(undefined);
+      setResearchResult(undefined);
+      setPage('board');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Не удалось открыть дело.');
+    }
+  }
+
+  async function createCase(input: CreateCaseInput) {
+    try {
+      const createdCase = await api.createCase(input);
+      setCaseSummaries(await api.listCases());
+      setInvestigationCase(createdCase);
+      setSelectedEntityId(createdCase.entities[0]?.id);
+      setSelectedRelationId(undefined);
+      setShowCreateCaseDialog(false);
+      setPage('board');
+      setMessage(`${createdCase.title} создано.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Не удалось создать дело.');
+    }
   }
 
   function addEntity(input: { type: EntityType; title: string; subtitle: string; summary: string }) {
@@ -145,7 +190,7 @@ export function App() {
     setMessage(undefined);
     try {
       let streamedResult: ResearchResult | undefined;
-      await api.researchStream(selectedEntityId, question, (event) => {
+      await api.researchStream(investigationCase.id, selectedEntityId, question, (event) => {
         if (event.type === 'status') {
           setResearchLogs((current) => current.at(-1) === event.message ? current : [...current, event.message].slice(-9));
         }
@@ -217,27 +262,44 @@ export function App() {
     return <div className="loading-screen"><span className="brand__mark">D</span><p>{message ?? 'Открываем материалы дела…'}</p></div>;
   }
   const displayedCase = previewCase ?? investigationCase;
+  const inspectorVisible = page === 'board' && Boolean(selectedEntity || selectedRelation);
+
+  function toggleLayer(type: EntityType) {
+    setVisibleTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }
 
   return (
-    <main className="app-shell">
-      <Sidebar investigationCase={investigationCase} filter={filter} onFilter={setFilter} page={page} codexReady={health.codex.ready} onOpenSettings={() => setPage('settings')} onOpenBoard={() => setPage('board')} />
+    <main className={`app-shell ${inspectorVisible ? 'has-inspector' : ''}`} data-theme="dark">
       {page === 'settings' ? (
         <SettingsPage health={health} refreshing={refreshingCodex} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
       ) : <>
       <section className="workspace">
         <header className="topbar">
+          <div className="compact-case-switcher">
+            <span className="brand__mark">D</span>
+            <Select className="case-select" value={investigationCase.id} disabled={researching} onChange={(event) => openCase(event.target.value)} aria-label="Текущее дело">
+              {caseSummaries.map((summary) => <option key={summary.id} value={summary.id}>{summary.title}</option>)}
+            </Select>
+            <IconButton icon="add" label="Создать новое дело" onClick={() => setShowCreateCaseDialog(true)} />
+          </div>
           <label className="global-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Найти на доске…" /></label>
           <div className="topbar__actions">
             <span className={`save-state save-state--${saveState}`}>{saveState === 'saving' ? 'Сохраняем…' : saveState === 'error' ? 'Ошибка сохранения' : 'Все изменения сохранены'}</span>
             <span className={`ai-status ${health.codex.ready ? 'is-online' : ''}`} title={health.codex.path}><Bot size={14} />{health.codex.ready ? 'Codex готов' : 'Ручной режим'}</span>
             <button className="secondary-button" onClick={() => setShowAddDialog(true)}><Plus size={16} />Карточка</button>
             <button className="primary-button topbar-research" disabled={!selectedEntity || researching || !health.codex.ready} onClick={() => research('')}><ShieldCheck size={16} />{researching ? 'Исследуем…' : 'Найти связи'}</button>
+            <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
           </div>
         </header>
         <Board
           investigationCase={displayedCase}
           selectedEntityId={selectedEntityId}
-          filter={filter}
+          visibleTypes={visibleTypes}
           search={search}
           onSelectEntity={(id) => { setSelectedEntityId(id); setSelectedRelationId(undefined); }}
           onSelectRelation={(relation) => { setSelectedRelationId(relation.id); setSelectedEntityId(undefined); }}
@@ -246,10 +308,11 @@ export function App() {
             entities: current.entities.map((entity) => entity.id === entityId ? { ...entity, position } : entity),
           }))}
         />
+        <LayerControl investigationCase={displayedCase} visibleTypes={visibleTypes} onToggle={toggleLayer} onShowAll={() => setVisibleTypes(new Set(entityTypes))} />
         {(researching || previewCase) && <ResearchLivePanel logs={researchLogs} researching={researching} result={researchResult} visibleEntities={visibleResearchEntities} visibleRelations={visibleResearchRelations} onAccept={acceptResearch} onReject={rejectResearch} />}
         {message && <button className="toast" onClick={() => setMessage(undefined)}>{message}<span>×</span></button>}
       </section>
-      <Inspector
+      {inspectorVisible && <Inspector
         entity={selectedEntity}
         relation={selectedRelation}
         allEntities={displayedCase.entities}
@@ -259,9 +322,16 @@ export function App() {
         onAddFact={addFact}
         onAddRelation={addRelation}
         onResearch={research}
-      />
+        onClose={() => { setSelectedEntityId(undefined); setSelectedRelationId(undefined); }}
+      />}
       </>}
       {showAddDialog && <AddEntityDialog onClose={() => setShowAddDialog(false)} onAdd={addEntity} />}
+      <CreateCaseDialog
+        open={showCreateCaseDialog}
+        nextCaseNumber={Math.max(0, ...caseSummaries.map((summary) => summary.caseNumber)) + 1}
+        onClose={() => setShowCreateCaseDialog(false)}
+        onCreate={createCase}
+      />
     </main>
   );
 }

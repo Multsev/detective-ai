@@ -19,23 +19,23 @@ const nodeTypes = { entity: EntityNode };
 interface BoardProps {
   investigationCase: InvestigationCase;
   selectedEntityId?: string;
-  filter: EntityType | 'all';
+  visibleTypes: ReadonlySet<EntityType>;
   search: string;
   onSelectEntity: (entityId?: string) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, filter, search, onSelectEntity, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, onSelectEntity, onMoveEntity, onSelectRelation }: BoardProps) {
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
     position: entity.position,
     data: { entity },
     selected: entity.id === selectedEntityId,
-    hidden: (filter !== 'all' && entity.type !== filter)
+    hidden: !visibleTypes.has(entity.type)
       || (Boolean(search) && !`${entity.title} ${entity.subtitle} ${entity.summary}`.toLowerCase().includes(search.toLowerCase())),
-  })), [filter, investigationCase.entities, search, selectedEntityId]);
+  })), [investigationCase.entities, search, selectedEntityId, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];

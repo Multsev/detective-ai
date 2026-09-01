@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, Bot, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { IconButton } from '@operator-ui/framework';
 import type { CaseFact, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 
@@ -13,9 +14,10 @@ interface InspectorProps {
   onAddFact: (kind: CaseFact['kind'], text: string) => void;
   onAddRelation: (targetId: string, label: string) => void;
   onResearch: (question: string) => void;
+  onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, researching, onAddFact, onAddRelation, onResearch }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, researching, onAddFact, onAddRelation, onResearch, onClose }: InspectorProps) {
   const [entryText, setEntryText] = useState('');
   const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
   const [researchQuestion, setResearchQuestion] = useState('');
@@ -29,6 +31,7 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
     const to = allEntities.find((item) => item.id === relation.targetId);
     return (
       <aside className="inspector">
+        <IconButton icon="error" label="Закрыть инспектор" className="inspector-close" onClick={onClose} />
         <span className="inspector__eyebrow">Выбранная связь</span>
         <h2>{relation.label}</h2>
         <p className="relation-direction">{from?.title ?? relation.sourceId} <span>→</span> {to?.title ?? relation.targetId}</p>
@@ -70,6 +73,7 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
 
   return (
     <aside className="inspector">
+      <IconButton icon="error" label="Закрыть инспектор" className="inspector-close" onClick={onClose} />
       <span className="inspector__eyebrow">Карточка · {entity.type}</span>
       <h2>{entity.title}</h2>
       <p className="inspector__subtitle">{entity.subtitle}</p>

@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
+    "@operator-ui/framework": "file:../../.codex/skills/operator-ui/framework",
     "@xyflow/react": "^12.8.6",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",

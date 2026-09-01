@@ -4,4 +4,5 @@ dist-server/
 .env
 .DS_Store
 data/case.json
+data/cases/*.json
 *.log

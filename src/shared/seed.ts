@@ -3,7 +3,9 @@ import type { InvestigationCase } from './domain.js';
 export function createSeedCase(): InvestigationCase {
   return {
     id: 'case-black-portfolio',
-    title: 'Дело № 47',
+    caseNumber: 1,
+    subject: 'Иван Морозов',
+    title: 'Дело № 0001 — Иван Морозов',
     subtitle: '«Чёрный портфель» · учебное расследование',
     updatedAt: new Date().toISOString(),
     sources: [
