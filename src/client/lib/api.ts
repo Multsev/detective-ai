@@ -49,8 +49,8 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(investigationCase),
   }),
-  async researchStream(caseId: string, entityId: string, question: string, onEvent: (event: ResearchStreamEvent) => void) {
-    const response = await fetch('/api/research/stream', {
+  async researchInformationStream(caseId: string, entityId: string, question: string, onEvent: (event: ResearchStreamEvent) => void) {
+    const response = await fetch('/api/research/information/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ caseId, entityId, question }),
@@ -64,5 +64,13 @@ export const api = {
     body.set('question', question);
     body.set('file', file);
     await consumeResearchStream(await fetch('/api/research/file/stream', { method: 'POST', body }), onEvent);
+  },
+  async researchRelationshipsStream(caseId: string, entityIds: string[], question: string, onEvent: (event: ResearchStreamEvent) => void) {
+    const response = await fetch('/api/research/relationships/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId, entityIds, question }),
+    });
+    await consumeResearchStream(response, onEvent);
   },
 };

@@ -250,9 +250,12 @@ export interface McpSettingsView extends McpSettings {
 }
 
 export type EntityResearchStatus = 'running' | 'completed' | 'error';
+export type ResearchMode = 'information' | 'relationships';
 
 export interface EntityResearchState {
   entityId: string;
+  mode: ResearchMode;
+  entityIds: string[];
   status: EntityResearchStatus;
   stage: string;
   message: string;

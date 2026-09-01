@@ -46,7 +46,8 @@ process.stdin.on('end', () => {
       const investigationCase = createSeedCase();
       investigationCase.researchSubjectEntityId = 'anna-lebedeva';
       const events: string[] = [];
-      const result = await new CodexResearchRunner(executable, directory).investigate(
+      const runner = new CodexResearchRunner(executable, directory);
+      const result = await runner.investigateInformation(
         investigationCase.entities[2],
         investigationCase,
         '',
@@ -56,12 +57,13 @@ process.stdin.on('end', () => {
       expect(events).toContain('structuring');
       expect(result.summary).toContain('связь');
       const prompt = await readFile(promptCapture, 'utf8');
-      expect(prompt).toContain('проверь связи фокусной карточки');
+      expect(prompt).toContain('НАЙТИ ИНФОРМАЦИЮ ОБ ОБЪЕКТЕ');
+      expect(prompt).toContain('Это не поиск связей между людьми и организациями');
       expect(prompt).toContain('$detective-osint');
       expect(prompt).toContain('Полный контекст текущего дела');
       expect(prompt).toContain('Исследуемый объект дела');
       expect(prompt).toContain('Анна Лебедева');
-      expect(prompt).toContain('Фокусная карточка является отдельной ветвью');
+      expect(prompt).toContain('Явно выбранные карточки текущего запуска');
       expect(prompt).toContain('sourceIds');
       expect(prompt).toContain('occurredAt');
       expect(prompt).toContain('publishedAt');
@@ -74,7 +76,18 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('Новых сведений по сравнению с материалами дела не найдено');
       expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');
 
-      const documentResult = await new CodexResearchRunner(executable, directory).investigate(
+      const relationshipResult = await runner.investigateRelationships(
+        [investigationCase.entities[0], investigationCase.entities[2]], investigationCase, 'Проверь совместные проекты', () => undefined,
+      );
+      const relationshipPrompt = await readFile(promptCapture, 'utf8');
+      expect(relationshipPrompt).toContain('НАЙТИ СВЯЗИ МЕЖДУ ВЫБРАННЫМИ ОБЪЕКТАМИ');
+      expect(relationshipPrompt).toContain('Проверь прямые и косвенные связи');
+      expect(relationshipPrompt).toContain(investigationCase.entities[0].title);
+      expect(relationshipPrompt).toContain(investigationCase.entities[2].title);
+      expect(relationshipPrompt).toContain('Проверь совместные проекты');
+      expect(relationshipResult.summary).toContain('связь');
+
+      const documentResult = await runner.investigateInformation(
         investigationCase.entities[0], investigationCase, 'Найди факты в отчёте', () => undefined,
         { fileName: 'report.md', mediaType: 'text/markdown', text: 'ООО «Пример» связано с объектом.', sha256: 'a'.repeat(64), truncated: false },
       );
@@ -84,6 +97,7 @@ process.stdin.on('end', () => {
       expect(documentArgs).toContain('web_search="disabled"');
       expect(await readFile(promptCapture, 'utf8')).toContain('Документ передан как JSON-данные');
       expect(documentResult.sources.at(-1)).toMatchObject({ title: 'report.md', kind: 'uploaded_file' });
+      await expect(runner.investigateRelationships([investigationCase.entities[0]], investigationCase, '', () => undefined)).rejects.toThrow('минимум две');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

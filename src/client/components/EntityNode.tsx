@@ -64,7 +64,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
       </div>}
       {research && <div className="entity-research-status" title={research.message}>
         {research.status === 'running' ? <LoaderCircle size={12} className="spin" /> : research.status === 'completed' ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
-        <div><strong>{research.status === 'running' ? 'Codex исследует' : research.status === 'completed' ? 'Исследование готово' : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
+        <div><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Codex ищет связи' : 'Codex ищет информацию') : research.status === 'completed' ? (research.mode === 'relationships' ? 'Связи проверены' : 'Информация обновлена') : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
       </div>}
       <Handle type="source" position={Position.Right} className="entity-handle" title="Потяните к другой карточке, чтобы создать связь" aria-label="Создать связь" />
     </article>

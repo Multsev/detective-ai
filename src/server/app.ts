@@ -17,6 +17,12 @@ const researchRequestSchema = z.object({
   question: z.string().max(1200).default(''),
 });
 
+const relationshipResearchRequestSchema = z.object({
+  caseId: z.string().min(1),
+  entityIds: z.array(z.string().min(1)).min(2, 'Выберите минимум две карточки.').max(20, 'За один запуск можно выбрать не более 20 карточек.').transform((ids) => [...new Set(ids)]).refine((ids) => ids.length >= 2, 'Выберите минимум две разные карточки.'),
+  question: z.string().max(1200).default(''),
+});
+
 const createCaseSchema = z.object({
   subject: z.string().trim().min(1).max(160),
   entityType: z.enum(['person', 'company']),
@@ -97,7 +103,7 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
     }
   });
 
-  app.post('/api/research/stream', async (request, response) => {
+  app.post(['/api/research/information/stream', '/api/research/stream'], async (request, response) => {
     try {
       const { caseId, entityId, question } = researchRequestSchema.parse(request.body);
       const investigationCase = await options.store.load(caseId);
@@ -129,11 +135,58 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
       response.flushHeaders();
       const emit = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
       const runner = new CodexResearchRunner(codex.path, process.cwd(), mcpSettings);
-      const result = await runner.investigate(focusEntity, investigationCase, question, emit);
+      const result = await runner.investigateInformation(focusEntity, investigationCase, question, emit);
       emit({ type: 'result', result });
       response.end();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка исследования.';
+      if (response.headersSent) {
+        response.write(`${JSON.stringify({ type: 'error', message })}\n`);
+        response.end();
+      } else {
+        response.status(error instanceof z.ZodError ? 400 : 500).json({ error: message });
+      }
+    }
+  });
+
+  app.post('/api/research/relationships/stream', async (request, response) => {
+    try {
+      const { caseId, entityIds, question } = relationshipResearchRequestSchema.parse(request.body);
+      const investigationCase = await options.store.load(caseId);
+      const requestedEntities = entityIds.map((entityId) => investigationCase.entities.find((entity) => entity.id === entityId));
+      if (requestedEntities.some((entity) => !entity)) {
+        response.status(404).json({ error: 'Одна или несколько карточек для поиска связей не найдены.' });
+        return;
+      }
+      const focusEntities = requestedEntities.filter((entity): entity is InvestigationCase['entities'][number] => Boolean(entity));
+
+      const codex = await detectCodex();
+      if (!codex.ready) {
+        response.status(503).json({ error: codex.installed ? 'Codex CLI найден, но требуется авторизация.' : 'Codex CLI не найден. Поиск связей отключён.' });
+        return;
+      }
+
+      const mcpSettings = await mcpSettingsStore.load();
+      const mcpView = await mcpSettingsStore.view();
+      const unavailableEnabledServer = mcpSettings.servers.find((server) => server.enabled && !mcpView.readiness.find((item) => item.id === server.id)?.ready);
+      if (unavailableEnabledServer) {
+        const status = mcpView.readiness.find((item) => item.id === unavailableEnabledServer.id);
+        response.status(503).json({ error: `MCP «${unavailableEnabledServer.name}» не готов: ${status?.message ?? 'проверьте настройки.'}` });
+        return;
+      }
+
+      response.status(200);
+      response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-cache, no-transform');
+      response.setHeader('X-Accel-Buffering', 'no');
+      response.flushHeaders();
+      const emit = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
+      const runner = new CodexResearchRunner(codex.path, process.cwd(), mcpSettings);
+      const result = await runner.investigateRelationships(focusEntities, investigationCase, question, emit);
+      emit({ type: 'result', result });
+      response.end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка поиска связей.';
       if (response.headersSent) {
         response.write(`${JSON.stringify({ type: 'error', message })}\n`);
         response.end();
@@ -175,7 +228,7 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
       if (document.truncated) emit({ type: 'status', stage: 'warning', message: 'Документ очень большой: анализируется первые 180 000 символов.' });
 
       const runner = new CodexResearchRunner(codex.path, process.cwd(), await mcpSettingsStore.load());
-      const result = await runner.investigate(focusEntity, investigationCase, question, emit, document);
+      const result = await runner.investigateInformation(focusEntity, investigationCase, question, emit, document);
       emit({ type: 'result', result });
       response.end();
     } catch (error) {

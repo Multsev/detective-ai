@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, ContactRound, Plus, Search, ShieldCheck } from 'lucide-react';
+import { Bot, ContactRound, Plus, Search, Share2, ShieldCheck } from 'lucide-react';
 import { Button, ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Select } from '@operator-ui/framework';
 import type {
   CaseSummary,
@@ -17,7 +17,7 @@ import type {
 } from '../shared/domain';
 import { entityTypes } from '../shared/domain';
 import { attributeIdentityKey } from '../shared/entityAttributeCatalog';
-import { getDefaultSubjectEntityId, getResearchSubjectEntity, getResearchSubjectEntityId, resetResearchSubject, setResearchSubject } from '../shared/caseSubject';
+import { getDefaultSubjectEntityId, getResearchSubjectEntityId, resetResearchSubject, setResearchSubject } from '../shared/caseSubject';
 import { api } from './lib/api';
 import { connectEntities, isEntityVisible, mergeResearchResultWithOutcome, removeEntityFromCase } from './lib/graph';
 import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
@@ -32,6 +32,7 @@ import { Inspector } from './components/Inspector';
 import { LayerControl } from './components/LayerControl';
 import { SettingsPage } from './components/SettingsPage';
 import { GoogleContactsDialog } from './components/GoogleContactsDialog';
+import { FindRelationshipsDialog } from './components/FindRelationshipsDialog';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -52,6 +53,8 @@ export function App() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
   const [showGoogleContacts, setShowGoogleContacts] = useState(false);
+  const [showFindRelationships, setShowFindRelationships] = useState(false);
+  const [relationshipInitialEntityIds, setRelationshipInitialEntityIds] = useState<string[]>([]);
   const [entityMenu, setEntityMenu] = useState<{ entityId: string; x: number; y: number }>();
   const [pendingDeleteEntityId, setPendingDeleteEntityId] = useState<string>();
   const [researchByEntityId, setResearchByEntityId] = useState<Record<string, EntityResearchState>>({});
@@ -64,6 +67,8 @@ export function App() {
   const investigationCaseRef = useRef<InvestigationCase | undefined>(undefined);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const researching = Object.values(researchByEntityId).some((research) => research.status === 'running');
+  const runningResearchCount = new Set(Object.values(researchByEntityId).filter((research) => research.status === 'running').map((research) => research.startedAt)).size;
+  const runningEntityIds = useMemo(() => new Set(Object.values(researchByEntityId).filter((research) => research.status === 'running').map((research) => research.entityId)), [researchByEntityId]);
 
   useEffect(() => {
     frameworkPersistence.set('detective:auto-fit-research', autoFitResearch);
@@ -247,10 +252,10 @@ export function App() {
     setMessage('Свойства связи сохранены.');
   }
 
-  async function research(question: string, focusEntityId = selectedEntityId, file?: File) {
+  async function findInformation(question: string, focusEntityId = selectedEntityId, file?: File) {
     const focusEntity = investigationCase?.entities.find((entity) => entity.id === focusEntityId);
     if (!focusEntityId || !focusEntity || !investigationCase) {
-      setMessage('Сначала выберите карточку для исследования.');
+      setMessage('Сначала выберите карточку, о которой нужно найти информацию.');
       return;
     }
     if (!health.codex.ready) {
@@ -262,13 +267,11 @@ export function App() {
       setMessage(`Исследование карточки «${focusEntity.title}» уже выполняется.`);
       return;
     }
-    const researchSubject = getResearchSubjectEntity(investigationCase) ?? focusEntity;
-    const relationshipContext = researchSubject.id === focusEntity.id ? '' : ` в отношении объекта «${researchSubject.title}»`;
     const normalizedQuestion = question.trim() || (file
-      ? `Извлеки из документа факты, сущности, связи и вопросы по выбранной карточке${relationshipContext}.`
-      : `Найди и проверь связи выбранной карточки${relationshipContext}.`);
+      ? 'Извлеки из документа новые проверяемые сведения и реквизиты выбранного объекта.'
+      : 'Найди новые проверяемые сведения об объекте и заполни доступные реквизиты карточки.');
     const initialResearch: EntityResearchState = {
-      entityId: focusEntityId, status: 'running', stage: 'starting', message: file ? `Загружаю файл «${file.name}»${relationshipContext}.` : `Подготавливаю поиск${relationshipContext}.`, question: normalizedQuestion, startedAt: new Date().toISOString(), source: file ? 'file' : 'web', fileName: file?.name,
+      entityId: focusEntityId, mode: 'information', entityIds: [focusEntityId], status: 'running', stage: 'starting', message: file ? `Загружаю файл «${file.name}».` : 'Ищу информацию и реквизиты объекта.', question: normalizedQuestion, startedAt: new Date().toISOString(), source: file ? 'file' : 'web', fileName: file?.name,
     };
     setSelectedEntityId(focusEntityId);
     setSelectedRelationId(undefined);
@@ -283,7 +286,7 @@ export function App() {
         if (event.type === 'result') streamedResult = event.result;
       };
       if (file) await api.researchFileStream(investigationCase.id, focusEntityId, normalizedQuestion, file, onEvent);
-      else await api.researchStream(investigationCase.id, focusEntityId, normalizedQuestion, onEvent);
+      else await api.researchInformationStream(investigationCase.id, focusEntityId, normalizedQuestion, onEvent);
       if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
       const latestCase = investigationCaseRef.current ?? investigationCase;
       const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
@@ -293,12 +296,96 @@ export function App() {
         ...(current[focusEntityId] ?? initialResearch), status: 'completed', stage: 'completed',
         message: outcome.hasNewInformation
           ? `Добавлено: ${outcome.addedAttributeCount} реквизитов, ${outcome.addedEntityCount} карточек, ${outcome.addedRelationCount} связей, ${outcome.addedSourceCount} источников, ${outcome.addedQuestionCount} вопросов${outcome.updatedRelationCount ? `; обновлено связей: ${outcome.updatedRelationCount}` : ''}.`
-          : 'Новых сведений и связей не найдено.',
+          : 'Новой информации об объекте не найдено.',
         result: outcome.result,
       } }));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Не удалось выполнить исследование.';
+      const errorMessage = error instanceof Error ? error.message : 'Не удалось найти информацию об объекте.';
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), status: 'error', stage: 'error', message: errorMessage } }));
+      setMessage(errorMessage);
+    }
+  }
+
+  function openFindRelationships(preferredEntityId?: string) {
+    if (!investigationCase || investigationCase.entities.length < 2) {
+      setMessage('Для поиска связей добавьте на доску минимум две карточки.');
+      return;
+    }
+    if (!health.codex.ready) {
+      setPage('settings');
+      setMessage('Codex CLI не готов. Проверьте установку и авторизацию в настройках.');
+      return;
+    }
+    const researchSubjectId = getResearchSubjectEntityId(investigationCase);
+    setRelationshipInitialEntityIds([...new Set([preferredEntityId, researchSubjectId].filter((id): id is string => Boolean(id)))]);
+    setShowFindRelationships(true);
+    setEntityMenu(undefined);
+  }
+
+  async function findRelationships(entityIds: string[], question: string) {
+    if (!investigationCase) return;
+    const uniqueEntityIds = [...new Set(entityIds)];
+    const focusEntities = uniqueEntityIds.map((entityId) => investigationCase.entities.find((entity) => entity.id === entityId)).filter((entity): entity is InvestigationEntity => Boolean(entity));
+    if (focusEntities.length < 2) {
+      setMessage('Выберите минимум две разные карточки для поиска связей.');
+      return;
+    }
+    const busyEntity = focusEntities.find((entity) => researchByEntityId[entity.id]?.status === 'running');
+    if (busyEntity) {
+      setMessage(`Карточка «${busyEntity.title}» уже участвует в исследовании.`);
+      return;
+    }
+    const normalizedQuestion = question.trim() || 'Найди и проверь прямые и косвенные связи между выбранными объектами во всех доступных источниках.';
+    const startedAt = new Date().toISOString();
+    const titleList = focusEntities.map((entity) => `«${entity.title}»`).join(', ');
+    const states = Object.fromEntries(focusEntities.map((entity) => [entity.id, {
+      entityId: entity.id,
+      mode: 'relationships' as const,
+      entityIds: uniqueEntityIds,
+      status: 'running' as const,
+      stage: 'starting',
+      message: `Ищу связи между ${focusEntities.length} выбранными объектами.`,
+      question: normalizedQuestion,
+      startedAt,
+      source: 'web' as const,
+    }]));
+    setResearchByEntityId((current) => ({ ...current, ...states }));
+    setShowFindRelationships(false);
+    setMessage(undefined);
+    try {
+      let streamedResult: EntityResearchState['result'];
+      const onEvent = (event: ResearchStreamEvent) => {
+        if (event.type === 'status') {
+          setResearchByEntityId((current) => {
+            const next = { ...current };
+            for (const entityId of uniqueEntityIds) next[entityId] = { ...(current[entityId] ?? states[entityId]), stage: event.stage, message: event.message };
+            return next;
+          });
+        }
+        if (event.type === 'result') streamedResult = event.result;
+      };
+      await api.researchRelationshipsStream(investigationCase.id, uniqueEntityIds, normalizedQuestion, onEvent);
+      if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
+      const latestCase = investigationCaseRef.current ?? investigationCase;
+      const currentFocus = latestCase.entities.find((entity) => entity.id === uniqueEntityIds[0]) ?? focusEntities[0];
+      const outcome = mergeResearchResultWithOutcome(latestCase, currentFocus, streamedResult);
+      if (outcome.hasNewInformation) commit(() => outcome.investigationCase);
+      const completionMessage = outcome.addedRelationCount || outcome.updatedRelationCount
+        ? `Связи найдены: добавлено ${outcome.addedRelationCount}, обновлено ${outcome.updatedRelationCount}; новых объектов: ${outcome.addedEntityCount}.`
+        : 'Новых подтверждаемых связей между выбранными объектами не найдено.';
+      setResearchByEntityId((current) => {
+        const next = { ...current };
+        for (const entityId of uniqueEntityIds) next[entityId] = { ...(current[entityId] ?? states[entityId]), status: 'completed', stage: 'completed', message: completionMessage, result: outcome.result };
+        return next;
+      });
+      setMessage(`${titleList}: ${completionMessage}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Не удалось найти связи.';
+      setResearchByEntityId((current) => {
+        const next = { ...current };
+        for (const entityId of uniqueEntityIds) next[entityId] = { ...(current[entityId] ?? states[entityId]), status: 'error', stage: 'error', message: errorMessage };
+        return next;
+      });
       setMessage(errorMessage);
     }
   }
@@ -404,14 +491,15 @@ export function App() {
           <label className="global-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Найти на доске…" /></label>
           <div className="topbar__actions">
             <span className={`save-state save-state--${saveState}`}>{saveState === 'saving' ? 'Сохраняем…' : saveState === 'error' ? 'Ошибка сохранения' : 'Все изменения сохранены'}</span>
-            <span className={`ai-status ${health.codex.ready ? 'is-online' : ''}`} title={health.codex.path}><Bot size={14} />{researching ? `${Object.values(researchByEntityId).filter((item) => item.status === 'running').length} в работе` : health.codex.ready ? 'Codex готов' : 'Ручной режим'}</span>
+            <span className={`ai-status ${health.codex.ready ? 'is-online' : ''}`} title={health.codex.path}><Bot size={14} />{researching ? `${runningResearchCount} в работе` : health.codex.ready ? 'Codex готов' : 'Ручной режим'}</span>
             <button className="secondary-button" onClick={() => {
               if (googleStatus.connected) setShowGoogleContacts(true);
               else { setPage('settings'); setMessage(googleStatus.configured ? 'Сначала подключите аккаунт Google.' : 'Сначала настройте OAuth-клиент Google.'); }
             }}><ContactRound size={16} />Контакты</button>
             <button className="secondary-button" onClick={() => setShowAddDialog(true)}><Plus size={16} />Карточка</button>
             <Button className="arrange-button" icon="network" title={selectedEntity ? `Расставить связи вокруг «${selectedEntity.title}»` : 'Расставить весь граф'} disabled={researching || investigationCase.entities.length === 0} onClick={arrangeObjects}>Расставить</Button>
-            <button className="primary-button topbar-research" disabled={!selectedEntity || !health.codex.ready || Boolean(selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running')} onClick={() => research('')}><ShieldCheck size={16} />{selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running' ? 'В работе…' : 'Найти связи'}</button>
+            <button className="secondary-button topbar-relations" disabled={!health.codex.ready || investigationCase.entities.length < 2} onClick={() => openFindRelationships(selectedEntityId)}><Share2 size={16} />Найти связи</button>
+            <button className="primary-button topbar-research" disabled={!selectedEntity || !health.codex.ready || Boolean(selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running')} onClick={() => findInformation('')}><ShieldCheck size={16} />{selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running' ? 'В работе…' : 'Найти информацию'}</button>
             <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
           </div>
         </header>
@@ -445,11 +533,10 @@ export function App() {
         sources={displayedCase.sources}
         aiConfigured={health.codex.ready}
         research={selectedEntity ? researchByEntityId[selectedEntity.id] : undefined}
-        researchSubject={getResearchSubjectEntity(displayedCase)}
         provenance={selectedEntity ? getEntityProvenance(displayedCase, selectedEntity) : undefined}
         onAddAttribute={addAttribute}
         onUpdateRelation={updateSelectedRelation}
-        onResearch={(question, file) => research(question, selectedEntityId, file)}
+        onFindInformation={(question, file) => findInformation(question, selectedEntityId, file)}
         onClose={() => { setSelectedEntityId(undefined); setSelectedRelationId(undefined); }}
       />}
       </>}
@@ -461,6 +548,14 @@ export function App() {
         onCreate={createCase}
       />
       <GoogleContactsDialog open={showGoogleContacts} onClose={() => setShowGoogleContacts(false)} onImport={addGoogleContact} />
+      <FindRelationshipsDialog
+        open={showFindRelationships}
+        entities={displayedCase.entities}
+        initialEntityIds={relationshipInitialEntityIds}
+        runningEntityIds={runningEntityIds}
+        onClose={() => setShowFindRelationships(false)}
+        onStart={(entityIds, question) => void findRelationships(entityIds, question)}
+      />
       <ContextMenu open={Boolean(entityMenu)} x={entityMenu?.x ?? 0} y={entityMenu?.y ?? 0} onClose={() => setEntityMenu(undefined)}>
         <ContextMenuItem onClick={() => setEntityMenu(undefined)}>Открыть карточку</ContextMenuItem>
         {entityMenu && entityMenu.entityId !== researchSubjectEntityId && <ContextMenuItem disabled={researching} onClick={() => chooseResearchSubject(entityMenu.entityId)}>
@@ -475,10 +570,13 @@ export function App() {
           onClick={() => {
             const entityId = entityMenu?.entityId;
             setEntityMenu(undefined);
-            if (entityId) void research('', entityId);
+            if (entityId) void findInformation('', entityId);
           }}
         >
-          Доисследовать через Codex
+          Найти информацию об объекте
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!health.codex.ready || investigationCase.entities.length < 2} onClick={() => openFindRelationships(entityMenu?.entityId)}>
+          Найти связи с другими объектами…
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem

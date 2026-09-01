@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, CalendarDays, ContactRound, Crosshair, FileText, FileUp, Globe2, IdCard, Search, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Bot, CalendarDays, ContactRound, FileText, FileUp, Globe2, IdCard, Search, Sparkles } from 'lucide-react';
 import { Button, IconButton, PlainTextEditor, Select, TextField } from '@operator-ui/framework';
 import type { EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
@@ -13,15 +13,14 @@ interface InspectorProps {
   sources: SourceReference[];
   aiConfigured: boolean;
   research?: EntityResearchState;
-  researchSubject?: InvestigationEntity;
   provenance?: EntityProvenance;
   onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
   onUpdateRelation: (input: { label: string; explanation: string }) => void;
-  onResearch: (question: string, file?: File) => void;
+  onFindInformation: (question: string, file?: File) => void;
   onClose: () => void;
 }
 
-export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, researchSubject, provenance, onAddAttribute, onUpdateRelation, onResearch, onClose }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, sources, aiConfigured, research, provenance, onAddAttribute, onUpdateRelation, onFindInformation, onClose }: InspectorProps) {
   const [researchQuestion, setResearchQuestion] = useState('');
   const [researchMode, setResearchMode] = useState<'web' | 'file'>('web');
   const [researchFile, setResearchFile] = useState<File>();
@@ -146,9 +145,8 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
       </section>
 
       <section className="research-box">
-        <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>
-        {researchSubject && <div className="research-subject-context"><Crosshair size={12} /><span>{researchSubject.id === entity.id ? 'Текущий объект дела' : 'Исследование в отношении'}</span><strong>{researchSubject.title}</strong></div>}
-        {research && <div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? 'Идёт работа' : research.status === 'completed' ? 'Последнее исследование готово' : 'Исследование завершилось с ошибкой'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div>}
+        <div className="research-box__title"><Sparkles size={15} /><strong>Информация об объекте</strong></div>
+        {research && <div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Идёт поиск связей' : 'Идёт поиск информации') : research.status === 'completed' ? (research.mode === 'relationships' ? 'Поиск связей завершён' : 'Информация обновлена') : 'Исследование завершилось с ошибкой'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div>}
         <label className="research-source-select"><span>Источник</span><Select value={researchMode} disabled={research?.status === 'running'} onChange={(event) => setResearchMode(event.target.value as 'web' | 'file')}><option value="web">Открытые источники</option><option value="file">PDF или Markdown-файл</option></Select></label>
         {researchMode === 'file' && <div className="research-file-picker">
           <input ref={fileInputRef} tabIndex={-1} type="file" accept=".pdf,.md,.markdown,application/pdf,text/markdown" onChange={(event) => {
@@ -165,9 +163,9 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
           <div title={researchFile?.name}>{researchFile ? <><FileText size={13} /><span>{researchFile.name}</span><small>{Math.max(1, Math.round(researchFile.size / 1024))} КБ</small></> : <><Globe2 size={13} /><span>PDF, .md или .markdown</span><small>до 12 МБ</small></>}</div>
           {fileError && <p>{fileError}</p>}
         </div>}
-        <textarea value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)} placeholder={researchMode === 'file' ? 'Что найти или проверить в документе?' : 'Что проверить? Например: найти связанные компании и официальные источники'} />
-        <button className="primary-button" disabled={research?.status === 'running' || !aiConfigured || (researchMode === 'file' && !researchFile)} onClick={() => onResearch(researchQuestion, researchMode === 'file' ? researchFile : undefined)}>
-          <Bot size={15} />{research?.status === 'running' ? 'Идёт исследование…' : !aiConfigured ? 'Codex не готов' : researchMode === 'file' ? 'Исследовать файл' : research ? 'Исследовать снова' : 'Исследовать'}
+        <textarea value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)} placeholder={researchMode === 'file' ? 'Какие сведения об объекте извлечь из документа?' : 'Что найти об объекте? Например: реквизиты, должность, официальные сайты'} />
+        <button className="primary-button" disabled={research?.status === 'running' || !aiConfigured || (researchMode === 'file' && !researchFile)} onClick={() => onFindInformation(researchQuestion, researchMode === 'file' ? researchFile : undefined)}>
+          <Bot size={15} />{research?.status === 'running' ? 'Идёт исследование…' : !aiConfigured ? 'Codex не готов' : researchMode === 'file' ? 'Загрузить информацию из файла' : 'Найти информацию'}
         </button>
       </section>
 
