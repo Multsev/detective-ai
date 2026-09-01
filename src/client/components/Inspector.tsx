@@ -5,6 +5,7 @@ import type { CaseMaterial, EntityAttributeKind, EntityResearchState, Investigat
 import { getAttributeHref, getEntityAttributeDefinitions } from '../../shared/entityAttributeCatalog';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { formatTemporalDate, type EntityProvenance } from '../lib/entityProvenance';
+import { researchFileAccept, researchFileFormatSummary } from '../../shared/researchFileTypes';
 
 interface InspectorProps {
   entity?: InvestigationEntity;
@@ -154,10 +155,10 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
           event.preventDefault();
           for (const file of event.dataTransfer.files) onAddFileMaterial(file);
         }}>
-          <FileUp size={15} /><span>Перетащите PDF или Markdown</span>
+          <FileUp size={15} /><span>Перетащите {researchFileFormatSummary}</span>
           <label className="detective-button material-file-trigger">
-            Выбрать
-            <input type="file" multiple accept=".pdf,.md,.markdown,application/pdf,text/markdown" aria-label="Выбрать материалы на компьютере" onChange={(event) => {
+            <span>Выбрать</span>
+            <input type="file" multiple accept={researchFileAccept} aria-label="Выбрать материалы на компьютере" onChange={(event) => {
               for (const file of event.target.files ?? []) onAddFileMaterial(file);
               event.currentTarget.value = '';
             }} />

@@ -126,7 +126,7 @@ export function createApp(options: { store: CaseStore; materialStore?: CaseMater
   app.post('/api/cases/:caseId/entities/:entityId/materials/file', documentUpload.single('file'), async (request, response, next) => {
     try {
       if (!request.file) {
-        response.status(400).json({ error: 'Выберите PDF или Markdown-файл.' });
+        response.status(400).json({ error: 'Выберите документ, таблицу или текстовый файл.' });
         return;
       }
       const caseId = String(request.params.caseId);
@@ -144,6 +144,7 @@ export function createApp(options: { store: CaseStore; materialStore?: CaseMater
       }
       const material = await materialStore.storeFile(caseId, entityId, {
         originalName: extracted.fileName,
+        kind: extracted.kind,
         mimeType: extracted.mediaType,
         buffer: request.file.buffer,
       });
@@ -374,9 +375,9 @@ export function createApp(options: { store: CaseStore; materialStore?: CaseMater
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     console.error(error);
     const message = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE'
-      ? 'Файл превышает ограничение 12 МБ.'
+      ? 'Файл превышает ограничение 24 МБ.'
       : error instanceof Error ? error.message : 'Неизвестная ошибка сервера.';
-    response.status(error instanceof z.ZodError || error instanceof multer.MulterError ? 400 : 500).json({ error: message });
+    response.status(error instanceof z.ZodError || error instanceof multer.MulterError || error instanceof DocumentExtractionError ? 400 : 500).json({ error: message });
   });
 
   return app;

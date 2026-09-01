@@ -42,6 +42,7 @@ import { ResearchQueueControl } from './components/ResearchQueueControl';
 import { downloadCaseFile, parseCaseFile } from './lib/caseFile';
 import { getDefaultMotionLevel, isMotionLevel, motionDuration, motionDurations, type MotionLevel } from './motion/motionPreferences';
 import { getEntityMaterials, getEntityResearchRuns, getPendingEntityMaterials } from '../shared/researchMemory';
+import { researchFileAccept } from '../shared/researchFileTypes';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type EntityMotionState = 'updated' | 'no-change' | 'error';
@@ -347,7 +348,7 @@ export function App() {
   }
 
   function addDocumentEntity(file: File) {
-    const title = file.name.replace(/\.(pdf|md|markdown)$/i, '') || file.name;
+    const title = file.name.replace(/\.(pdf|md|markdown|txt|text|log|csv|tsv|json|jsonl|xml|html?|ya?ml|ini|conf|sql|docx|xlsx|xlsm)$/i, '') || file.name;
     const id = `document-${crypto.randomUUID().slice(0, 8)}`;
     const sourceId = `source-${crypto.randomUUID().slice(0, 8)}`;
     commit((current) => ({
@@ -396,8 +397,8 @@ export function App() {
   async function addFileMaterial(file: File) {
     const entityId = inspectorEntityId;
     if (!entityId) return;
-    if (file.size > 12 * 1024 * 1024) {
-      setMessage(`Файл «${file.name}» больше 12 МБ.`);
+    if (file.size > 24 * 1024 * 1024) {
+      setMessage(`Файл «${file.name}» больше 24 МБ.`);
       return;
     }
     const task = materialMutationQueue.current.catch(() => undefined).then(async () => {
@@ -1034,7 +1035,7 @@ export function App() {
       <ManualLinkDialog open={showManualLinkDialog} source={linkSource} targets={linkTargets} onClose={() => setShowManualLinkDialog(false)} onCreate={createManualLinks} />
       <RenameCaseDialog open={showRenameCase} title={investigationCase.title} onClose={() => setShowRenameCase(false)} onRename={(title) => { commit((current) => ({ ...current, title })); setShowRenameCase(false); }} />
       <input ref={caseFileInput} className="visually-hidden" type="file" accept=".detective,.json,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCaseFile(file); }} />
-      <input ref={entityFileInput} className="visually-hidden" type="file" accept=".pdf,.md,.markdown,application/pdf,text/markdown" onChange={(event) => { const file = event.target.files?.[0]; if (file) addDocumentEntity(file); }} />
+      <input ref={entityFileInput} className="visually-hidden" type="file" accept={researchFileAccept} onChange={(event) => { const file = event.target.files?.[0]; if (file) addDocumentEntity(file); }} />
       <ContextMenu open={Boolean(entityMenu)} x={entityMenu?.x ?? 0} y={entityMenu?.y ?? 0} onClose={() => setEntityMenu(undefined)}>
         <ContextMenuItem onClick={() => { if (selectedEntityId) setInspectorEntityId(selectedEntityId); setEntityMenu(undefined); }}>{selectedEntityIds.size > 1 ? `Открыть активную карточку` : 'Открыть карточку'}</ContextMenuItem>
         {selectedEntityIds.size === 1 && entityMenu && entityMenu.entityId !== researchSubjectEntityId && <ContextMenuItem disabled={researching} onClick={() => chooseResearchSubject(entityMenu.entityId)}>

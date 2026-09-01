@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { extractResearchDocument } from '../src/server/research/documentExtractor.js';
 
@@ -31,6 +34,34 @@ describe('research document extraction', () => {
     expect(result.sha256).toHaveLength(64);
   });
 
+  it('reads ordinary text and removes HTML markup', async () => {
+    const text = await extractResearchDocument({ originalName: 'facts.txt', mimeType: 'text/plain', buffer: Buffer.from('ИНН 1234567890') });
+    const html = await extractResearchDocument({ originalName: 'page.html', mimeType: 'text/html', buffer: Buffer.from('<h1>Компания</h1><script>ignore()</script><p>Директор Петров</p>') });
+    expect(text).toMatchObject({ kind: 'text', mediaType: 'text/plain' });
+    expect(text.text).toContain('ИНН 1234567890');
+    expect(html.text).toContain('Директор Петров');
+    expect(html.text).not.toContain('ignore()');
+  });
+
+  it('extracts text from a Word document', async () => {
+    const buffer = await readFile(path.join(process.cwd(), 'node_modules/mammoth/test/test-data/single-paragraph.docx'));
+    const result = await extractResearchDocument({ originalName: 'report.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer });
+    expect(result.kind).toBe('word');
+    expect(result.text).toContain('Walking on imported air');
+  });
+
+  it('extracts cells from an Excel workbook', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Реквизиты');
+    worksheet.addRow(['Компания', 'ИНН']);
+    worksheet.addRow(['ООО Пример', '1234567890']);
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    const result = await extractResearchDocument({ originalName: 'companies.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(arrayBuffer) });
+    expect(result.kind).toBe('spreadsheet');
+    expect(result.text).toContain('[Лист: Реквизиты]');
+    expect(result.text).toContain('ООО Пример\t1234567890');
+  });
+
   it('extracts text from a real PDF structure', async () => {
     const result = await extractResearchDocument({ originalName: 'report.pdf', mimeType: 'application/pdf', buffer: createTinyPdf('Acme report') });
     expect(result.mediaType).toBe('application/pdf');
@@ -39,6 +70,6 @@ describe('research document extraction', () => {
 
   it('rejects disguised and unsupported files', async () => {
     await expect(extractResearchDocument({ originalName: 'fake.pdf', mimeType: 'application/pdf', buffer: Buffer.from('not a pdf') })).rejects.toThrow('сигнатуры PDF');
-    await expect(extractResearchDocument({ originalName: 'image.png', mimeType: 'image/png', buffer: Buffer.from('png') })).rejects.toThrow('Поддерживаются только');
+    await expect(extractResearchDocument({ originalName: 'image.png', mimeType: 'image/png', buffer: Buffer.from('png') })).rejects.toThrow('не поддерживается');
   });
 });

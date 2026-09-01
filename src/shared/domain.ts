@@ -1,3 +1,5 @@
+import type { ResearchFileKind, ResearchFileMediaType } from './researchFileTypes.js';
+
 export const entityTypes = ['person', 'company', 'document', 'event', 'location', 'question', 'note'] as const;
 export type EntityType = (typeof entityTypes)[number];
 
@@ -130,7 +132,7 @@ export interface InvestigationRelation {
   occurredAt?: string;
 }
 
-export type CaseMaterialKind = 'pdf' | 'markdown' | 'note';
+export type CaseMaterialKind = ResearchFileKind | 'note';
 export type CaseMaterialStatus = 'pending' | 'processing' | 'processed' | 'changed' | 'error';
 
 export interface CaseMaterial {
@@ -138,7 +140,7 @@ export interface CaseMaterial {
   entityId: string;
   kind: CaseMaterialKind;
   name: string;
-  mimeType: 'application/pdf' | 'text/markdown';
+  mimeType: ResearchFileMediaType;
   fingerprint: string;
   storageKey?: string;
   content?: string;
@@ -314,7 +316,8 @@ export interface EntityResearchState {
 
 export interface ResearchDocument {
   fileName: string;
-  mediaType: 'application/pdf' | 'text/markdown';
+  kind: ResearchFileKind;
+  mediaType: ResearchFileMediaType;
   text: string;
   sha256: string;
   truncated: boolean;

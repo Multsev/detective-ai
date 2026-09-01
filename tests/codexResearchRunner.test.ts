@@ -93,7 +93,7 @@ process.stdin.on('end', () => {
 
       const documentResult = await runner.investigateInformation(
         investigationCase.entities[0], investigationCase, 'Найди факты в отчёте', () => undefined,
-        { fileName: 'report.md', mediaType: 'text/markdown', text: 'ООО «Пример» связано с объектом.', sha256: 'a'.repeat(64), truncated: false },
+        { fileName: 'report.md', kind: 'markdown', mediaType: 'text/markdown', text: 'ООО «Пример» связано с объектом.', sha256: 'a'.repeat(64), truncated: false },
       );
       const documentArgs = JSON.parse(await readFile(argsCapture, 'utf8')) as string[];
       expect(documentArgs).not.toContain('--search');

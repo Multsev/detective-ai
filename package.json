@@ -13,8 +13,10 @@
   "dependencies": {
     "@xyflow/react": "^12.8.6",
     "dotenv": "^17.2.2",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "lucide-react": "^0.542.0",
+    "mammoth": "^1.12.2",
     "multer": "^2.3.0",
     "pdf-parse": "^2.4.5",
     "react": "^19.1.1",
@@ -33,5 +35,10 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.4",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   }
 }

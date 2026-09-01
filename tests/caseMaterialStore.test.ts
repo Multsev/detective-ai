@@ -16,8 +16,8 @@ describe('CaseMaterialStore', () => {
     temporaryDirectories.push(directory);
     const store = new CaseMaterialStore(directory);
     const buffer = Buffer.from('# Материал дела');
-    const first = await store.storeFile('case-1', 'entity-1', { originalName: 'report.md', mimeType: 'text/markdown', buffer });
-    const second = await store.storeFile('case-1', 'entity-2', { originalName: 'copy.md', mimeType: 'text/markdown', buffer });
+    const first = await store.storeFile('case-1', 'entity-1', { originalName: 'report.md', kind: 'markdown', mimeType: 'text/markdown', buffer });
+    const second = await store.storeFile('case-1', 'entity-2', { originalName: 'copy.md', kind: 'markdown', mimeType: 'text/markdown', buffer });
 
     expect(first.storageKey).toBe(second.storageKey);
     expect(await store.read(first)).toEqual(buffer);
