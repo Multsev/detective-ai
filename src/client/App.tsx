@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, Plus, Search, ShieldCheck } from 'lucide-react';
-import { IconButton, Select } from '@operator-ui/framework';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator, IconButton, Select } from '@operator-ui/framework';
 import type {
   CaseSummary,
   CaseFact,
@@ -14,10 +14,11 @@ import type {
 } from '../shared/domain';
 import { entityTypes } from '../shared/domain';
 import { api } from './lib/api';
-import { mergeResearchResult } from './lib/graph';
+import { mergeResearchResult, removeEntityFromCase } from './lib/graph';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
 import { CreateCaseDialog } from './components/CreateCaseDialog';
+import { DeleteEntityDialog } from './components/DeleteEntityDialog';
 import { EvidenceLegendControl } from './components/EvidenceLegendControl';
 import { Inspector } from './components/Inspector';
 import { LayerControl } from './components/LayerControl';
@@ -40,6 +41,8 @@ export function App() {
   const [search, setSearch] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
+  const [entityMenu, setEntityMenu] = useState<{ entityId: string; x: number; y: number }>();
+  const [pendingDeleteEntityId, setPendingDeleteEntityId] = useState<string>();
   const [researchResult, setResearchResult] = useState<ResearchResult>();
   const [previewCase, setPreviewCase] = useState<InvestigationCase>();
   const [researchLogs, setResearchLogs] = useState<string[]>([]);
@@ -172,8 +175,9 @@ export function App() {
     commit((current) => ({ ...current, relations: [...current.relations, relation] }));
   }
 
-  async function research(question: string) {
-    if (!selectedEntityId || !selectedEntity || !investigationCase) {
+  async function research(question: string, focusEntityId = selectedEntityId) {
+    const focusEntity = investigationCase?.entities.find((entity) => entity.id === focusEntityId);
+    if (!focusEntityId || !focusEntity || !investigationCase) {
       setMessage('Сначала выберите карточку для исследования.');
       return;
     }
@@ -182,6 +186,8 @@ export function App() {
       setMessage('Codex CLI не готов. Проверьте установку и авторизацию в настройках.');
       return;
     }
+    setSelectedEntityId(focusEntityId);
+    setSelectedRelationId(undefined);
     setResearching(true);
     setResearchResult(undefined);
     setPreviewCase(investigationCase);
@@ -191,7 +197,7 @@ export function App() {
     setMessage(undefined);
     try {
       let streamedResult: ResearchResult | undefined;
-      await api.researchStream(investigationCase.id, selectedEntityId, question, (event) => {
+      await api.researchStream(investigationCase.id, focusEntityId, question, (event) => {
         if (event.type === 'status') {
           setResearchLogs((current) => current.at(-1) === event.message ? current : [...current, event.message].slice(-9));
         }
@@ -199,7 +205,7 @@ export function App() {
       });
       if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
 
-      const targetCase = mergeResearchResult(investigationCase, selectedEntity, streamedResult);
+      const targetCase = mergeResearchResult(investigationCase, focusEntity, streamedResult);
       const newEntities = targetCase.entities.filter((entity) => !investigationCase.entities.some((current) => current.id === entity.id));
       const newRelations = targetCase.relations.filter((relation) => !investigationCase.relations.some((current) => current.id === relation.id));
       let animatedCase: InvestigationCase = { ...investigationCase, sources: targetCase.sources };
@@ -248,6 +254,19 @@ export function App() {
     setMessage('Предложения Codex удалены, исходная доска не изменилась.');
   }
 
+  function deleteEntity(entityId: string) {
+    if (!investigationCase) return;
+    const entity = investigationCase.entities.find((item) => item.id === entityId);
+    if (!entity) return;
+    const relationCount = investigationCase.relations.filter((relation) => relation.sourceId === entityId || relation.targetId === entityId).length;
+    commit((current) => removeEntityFromCase(current, entityId));
+    setSelectedEntityId(undefined);
+    setSelectedRelationId(undefined);
+    setPendingDeleteEntityId(undefined);
+    setEntityMenu(undefined);
+    setMessage(`Карточка «${entity.title}» и ${relationCount} связ. удалены.`);
+  }
+
   async function refreshCodexStatus() {
     setRefreshingCodex(true);
     try {
@@ -264,6 +283,10 @@ export function App() {
   }
   const displayedCase = previewCase ?? investigationCase;
   const inspectorVisible = page === 'board' && Boolean(selectedEntity || selectedRelation);
+  const pendingDeleteEntity = investigationCase.entities.find((entity) => entity.id === pendingDeleteEntityId);
+  const pendingDeleteRelationCount = pendingDeleteEntityId
+    ? investigationCase.relations.filter((relation) => relation.sourceId === pendingDeleteEntityId || relation.targetId === pendingDeleteEntityId).length
+    : 0;
 
   function toggleLayer(type: EntityType) {
     setVisibleTypes((current) => {
@@ -303,6 +326,7 @@ export function App() {
           visibleTypes={visibleTypes}
           search={search}
           onSelectEntity={(id) => { setSelectedEntityId(id); setSelectedRelationId(undefined); }}
+          onOpenEntityMenu={(entityId, position) => setEntityMenu({ entityId, ...position })}
           onSelectRelation={(relation) => { setSelectedRelationId(relation.id); setSelectedEntityId(undefined); }}
           onMoveEntity={(entityId, position) => commit((current) => ({
             ...current,
@@ -333,6 +357,35 @@ export function App() {
         nextCaseNumber={Math.max(0, ...caseSummaries.map((summary) => summary.caseNumber)) + 1}
         onClose={() => setShowCreateCaseDialog(false)}
         onCreate={createCase}
+      />
+      <ContextMenu open={Boolean(entityMenu)} x={entityMenu?.x ?? 0} y={entityMenu?.y ?? 0} onClose={() => setEntityMenu(undefined)}>
+        <ContextMenuItem onClick={() => setEntityMenu(undefined)}>Открыть карточку</ContextMenuItem>
+        <ContextMenuItem
+          disabled={!health.codex.ready || researching}
+          onClick={() => {
+            const entityId = entityMenu?.entityId;
+            setEntityMenu(undefined);
+            if (entityId) void research('', entityId);
+          }}
+        >
+          Доисследовать через Codex
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          disabled={researching}
+          onClick={() => {
+            setPendingDeleteEntityId(entityMenu?.entityId);
+            setEntityMenu(undefined);
+          }}
+        >
+          Удалить карточку и связи…
+        </ContextMenuItem>
+      </ContextMenu>
+      <DeleteEntityDialog
+        entityTitle={pendingDeleteEntity?.title}
+        relationCount={pendingDeleteRelationCount}
+        onClose={() => setPendingDeleteEntityId(undefined)}
+        onConfirm={() => pendingDeleteEntityId && deleteEntity(pendingDeleteEntityId)}
       />
     </main>
   );

@@ -1,5 +1,13 @@
 import type { InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchResult } from '../../shared/domain';
 
+export function removeEntityFromCase(investigationCase: InvestigationCase, entityId: string): InvestigationCase {
+  return {
+    ...investigationCase,
+    entities: investigationCase.entities.filter((entity) => entity.id !== entityId),
+    relations: investigationCase.relations.filter((relation) => relation.sourceId !== entityId && relation.targetId !== entityId),
+  };
+}
+
 export function mergeResearchResult(
   investigationCase: InvestigationCase,
   focusEntity: InvestigationEntity,

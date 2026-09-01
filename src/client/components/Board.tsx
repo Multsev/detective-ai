@@ -22,11 +22,12 @@ interface BoardProps {
   visibleTypes: ReadonlySet<EntityType>;
   search: string;
   onSelectEntity: (entityId?: string) => void;
+  onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, onSelectEntity, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
@@ -72,6 +73,11 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeContextMenu={(event, node) => {
+          event.preventDefault();
+          onSelectEntity(node.id);
+          onOpenEntityMenu(node.id, { x: event.clientX, y: event.clientY });
+        }}
         onPaneClick={() => onSelectEntity(undefined)}
         onNodeDragStop={(_event, node) => onMoveEntity(node.id, node.position)}
         onEdgeClick={(_event, edge) => {

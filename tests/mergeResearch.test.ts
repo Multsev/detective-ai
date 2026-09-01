@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeResearchResult } from '../src/client/lib/graph.js';
+import { mergeResearchResult, removeEntityFromCase } from '../src/client/lib/graph.js';
 import { createSeedCase } from '../src/shared/seed.js';
 
 describe('research proposal merge', () => {
@@ -36,5 +36,19 @@ describe('research proposal merge', () => {
 
     expect(merged.entities.filter((entity) => entity.id === focus.id)).toHaveLength(1);
     expect(merged.sources.filter((source) => source.id === existingSource.id)).toHaveLength(1);
+  });
+});
+
+describe('entity removal', () => {
+  it('removes the card and every incoming or outgoing relation', () => {
+    const investigationCase = createSeedCase();
+    const entityId = investigationCase.entities[0].id;
+    const unrelatedRelation = investigationCase.relations.find((relation) => relation.sourceId !== entityId && relation.targetId !== entityId);
+
+    const result = removeEntityFromCase(investigationCase, entityId);
+
+    expect(result.entities.some((entity) => entity.id === entityId)).toBe(false);
+    expect(result.relations.some((relation) => relation.sourceId === entityId || relation.targetId === entityId)).toBe(false);
+    if (unrelatedRelation) expect(result.relations).toContainEqual(unrelatedRelation);
   });
 });
