@@ -98,8 +98,22 @@ export interface ResearchResult {
   warnings: string[];
 }
 
+export interface CodexStatus {
+  installed: boolean;
+  authenticated: boolean;
+  ready: boolean;
+  path: string;
+  version: string;
+  authMessage: string;
+  checkedAt: string;
+}
+
 export interface HealthStatus {
   ok: boolean;
-  aiConfigured: boolean;
-  model: string;
+  codex: CodexStatus;
 }
+
+export type ResearchStreamEvent =
+  | { type: 'status'; stage: string; message: string }
+  | { type: 'result'; result: ResearchResult }
+  | { type: 'error'; message: string };

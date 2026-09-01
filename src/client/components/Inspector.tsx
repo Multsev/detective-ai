@@ -79,7 +79,7 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
         <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>
         <textarea value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)} placeholder="Что проверить? Например: найти связанные компании и официальные источники" />
         <button className="primary-button" disabled={researching || !aiConfigured} onClick={() => onResearch(researchQuestion)}>
-          <Bot size={15} />{researching ? 'Идёт поиск…' : aiConfigured ? 'Исследовать' : 'Нужен API-ключ'}
+          <Bot size={15} />{researching ? 'Идёт поиск…' : aiConfigured ? 'Исследовать' : 'Codex не готов'}
         </button>
       </section>
 
