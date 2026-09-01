@@ -1,0 +1,444 @@
+/*
+ * Unified case-file palette.
+ *
+ * Dark graphite owns navigation and tools. Warm paper owns evidence and
+ * reading surfaces. Amber is reserved for focus and primary actions, while
+ * semantic colors communicate state without competing with the evidence.
+ */
+:root {
+  --case-graphite-950: #0e151a;
+  --case-graphite-900: #121b21;
+  --case-graphite-850: #172229;
+  --case-graphite-800: #1d2a32;
+  --case-graphite-700: #293840;
+  --case-graphite-500: #6f7d80;
+  --case-graphite-300: #aeb8b4;
+  --case-graphite-100: #e9e5dc;
+
+  --case-paper-50: #fbf7ee;
+  --case-paper-100: #f2eadb;
+  --case-paper-200: #e6dbc7;
+  --case-paper-300: #d0bea0;
+  --case-paper-ink: #302d27;
+  --case-paper-muted: #766e62;
+
+  --case-amber-700: #9b6d2d;
+  --case-amber-600: #b98335;
+  --case-amber-500: #d2a24f;
+  --case-amber-400: #e0b66c;
+  --case-red-600: #9e4547;
+
+  --case-success: #68a079;
+  --case-warning: #d0a04d;
+  --case-danger: #c26769;
+  --case-info: #6e9aaf;
+
+  --case-board: #a98662;
+  --case-board-shadow: rgba(48, 29, 15, .3);
+  --case-dark-border: rgba(230, 211, 179, .16);
+  --case-paper-border: rgba(83, 61, 37, .24);
+  --case-focus-ring: rgba(224, 182, 108, .25);
+
+  color: var(--case-paper-ink);
+  background: var(--case-graphite-950);
+
+  --ink: var(--case-paper-ink);
+  --muted: var(--case-paper-muted);
+  --panel: var(--case-graphite-850);
+  --panel-light: var(--case-graphite-800);
+  --paper: var(--case-paper-100);
+  --accent: var(--case-amber-500);
+  --border-dark: var(--case-dark-border);
+  --detective-text: var(--case-graphite-100);
+  --detective-text-secondary: var(--case-graphite-300);
+  --detective-panel-bg: var(--case-graphite-850);
+  --detective-input-bg: var(--case-graphite-950);
+  --detective-control-bg: var(--case-graphite-700);
+  --detective-control-hover: #33444d;
+  --detective-border: var(--case-dark-border);
+  --detective-focus: var(--case-amber-400);
+  --detective-selection: rgba(210, 162, 79, .18);
+  --detective-selection-strong: var(--case-amber-400);
+  --detective-success: var(--case-success);
+  --detective-warning: var(--case-warning);
+  --detective-danger: var(--case-danger);
+  --detective-info: var(--case-info);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline-color: var(--case-amber-400);
+}
+
+.app-shell,
+.loading-screen,
+.settings-page {
+  background: var(--case-graphite-950);
+}
+
+.topbar {
+  color: var(--case-graphite-100);
+  background: var(--case-graphite-900);
+  border-color: var(--case-dark-border);
+}
+
+.topbar::after {
+  background: var(--case-amber-600);
+}
+
+.topbar .brand__mark,
+.brand__mark {
+  color: #2b2115;
+  background: var(--case-amber-500);
+}
+
+.document-title {
+  color: var(--case-graphite-100);
+}
+
+.detective-app-menu > button,
+.save-state,
+.topbar__actions .arrange-button {
+  color: var(--case-graphite-300);
+}
+
+.detective-app-menu > button:hover,
+.detective-app-menu > button.is-open {
+  color: var(--case-amber-400);
+  background: rgba(210, 162, 79, .1);
+}
+
+.detective-button,
+.detective-icon-button,
+.compact-case-switcher .detective-icon-button,
+.topbar__actions .arrange-button,
+.research-queue-trigger,
+.board-tool-button,
+.selection-summary,
+.link-mode-bar,
+.react-flow__controls,
+.react-flow__controls button {
+  color: var(--case-graphite-300) !important;
+  border-color: var(--case-dark-border) !important;
+  background: var(--case-graphite-850) !important;
+}
+
+.detective-button:hover:not(:disabled),
+.detective-icon-button:hover:not(:disabled),
+.compact-case-switcher .detective-icon-button:hover:not(:disabled),
+.topbar__actions .arrange-button:hover:not(:disabled),
+.board-tool-button:hover,
+.board-tool-button.is-active,
+.react-flow__controls button:hover {
+  color: var(--case-amber-400) !important;
+  border-color: rgba(224, 182, 108, .46) !important;
+  background: var(--case-graphite-800) !important;
+}
+
+.detective-button--primary,
+.detective-dialog .detective-button--primary,
+.primary-button {
+  color: #271f14 !important;
+  border-color: var(--case-amber-700) !important;
+  background: var(--case-amber-500) !important;
+}
+
+.detective-button--primary:hover:not(:disabled),
+.detective-dialog .detective-button--primary:hover:not(:disabled),
+.primary-button:hover:not(:disabled) {
+  color: #1d170f !important;
+  background: var(--case-amber-400) !important;
+}
+
+.detective-button--danger,
+.detective-dialog .detective-button--danger {
+  color: #fff4ed !important;
+  border-color: #7e383b !important;
+  background: var(--case-red-600) !important;
+}
+
+.detective-input,
+.detective-select,
+.detective-plain-text,
+.case-select,
+.global-search {
+  color: var(--case-graphite-100) !important;
+  border-color: var(--case-dark-border) !important;
+  background: var(--case-graphite-950) !important;
+}
+
+.case-select:hover:not(:disabled),
+.detective-input:focus,
+.detective-select:focus,
+.detective-plain-text:focus {
+  border-color: var(--case-amber-400) !important;
+  box-shadow: 0 0 0 2px var(--case-focus-ring) !important;
+}
+
+.global-search input {
+  color: var(--case-graphite-100);
+}
+
+.global-search input::placeholder {
+  color: var(--case-graphite-500);
+}
+
+.detective-panel,
+.settings-section,
+.display-control__panel,
+.research-queue-panel {
+  color: var(--case-graphite-100);
+  border-color: var(--case-dark-border);
+  background: var(--case-graphite-850);
+}
+
+.settings-section > summary:hover {
+  background: var(--case-graphite-800);
+}
+
+.detective-floating-menu,
+.detective-context-menu,
+.detective-submenu > div {
+  color: var(--case-paper-ink);
+  border-color: var(--case-paper-border);
+  background: var(--case-paper-100);
+}
+
+.detective-floating-menu::before,
+.detective-context-menu::before {
+  opacity: .08;
+}
+
+.detective-floating-menu button,
+.detective-context-menu button {
+  color: #433c33;
+}
+
+.detective-floating-menu button:hover:not(:disabled),
+.detective-context-menu button:hover:not(:disabled) {
+  color: #241d15;
+  background: rgba(185, 131, 53, .16);
+}
+
+.detective-dialog {
+  color: var(--case-paper-ink);
+  border-color: var(--case-paper-border);
+  background: var(--case-paper-100);
+}
+
+.detective-dialog > header {
+  border-color: rgba(83, 61, 37, .18);
+  background: rgba(242, 234, 219, .97);
+}
+
+.detective-dialog > header::after,
+.inspector::before {
+  background: var(--case-red-600);
+}
+
+.detective-dialog-kicker,
+.inspector__eyebrow {
+  color: var(--case-amber-700);
+}
+
+.detective-dialog-body,
+.detective-dialog .information-dialog,
+.detective-dialog .manual-link-dialog,
+.detective-dialog .rename-case-dialog {
+  color: var(--case-paper-ink);
+}
+
+.detective-dialog .detective-input,
+.detective-dialog .detective-select,
+.detective-dialog .detective-plain-text,
+.detective-dialog .information-dialog textarea,
+.detective-dialog .information-dialog__targets,
+.detective-dialog .information-dialog__targets span,
+.detective-dialog .manual-link-dialog > p,
+.detective-dialog .manual-link-dialog .detective-plain-text {
+  color: var(--case-paper-ink) !important;
+  border-color: var(--case-paper-border) !important;
+  background: var(--case-paper-50) !important;
+}
+
+.detective-dialog .detective-button:not(.detective-button--primary):not(.detective-button--danger) {
+  color: #514a40 !important;
+  border-color: var(--case-paper-border) !important;
+  background: rgba(255, 255, 255, .34) !important;
+}
+
+.detective-dialog .information-dialog label,
+.detective-dialog .manual-link-dialog label,
+.detective-dialog .rename-case-dialog label {
+  color: var(--case-paper-muted);
+}
+
+.board-shell,
+.react-flow__pane {
+  background: var(--case-board);
+}
+
+.board-shell::after {
+  box-shadow: inset 0 0 90px var(--case-board-shadow);
+}
+
+.entity-card {
+  color: var(--case-paper-ink);
+  border-color: rgba(72, 51, 31, .18);
+  background-color: var(--case-paper-100);
+}
+
+.entity-card--company { background-color: #e2e4d9; }
+.entity-card--document { background-color: #ead9aa; }
+.entity-card--question { background-color: #e8df9e; }
+.entity-card--note { background-color: #d8e2cf; }
+.entity-card--event { background-color: #ead8d1; }
+.entity-card--location { background-color: #d8e3df; }
+
+.entity-card:hover,
+.entity-card.is-active-selection {
+  box-shadow: 0 0 0 3px var(--case-amber-500), 0 13px 26px rgba(48, 29, 15, .3);
+}
+
+.entity-card.is-selected:not(.is-active-selection) {
+  box-shadow: 0 0 0 2px var(--case-info), 0 9px 18px rgba(48, 29, 15, .24);
+}
+
+.entity-card__type,
+.entity-card__date,
+.entity-card__source small {
+  color: var(--case-amber-700);
+}
+
+.entity-card__header p,
+.entity-card__summary,
+.entity-card__source {
+  color: var(--case-paper-muted);
+}
+
+.entity-card__attributes dt { color: #806f5c; }
+.entity-card__attributes dd { color: #3c403e; }
+
+.entity-card.is-research-subject {
+  outline-color: var(--case-amber-500);
+}
+
+.entity-card__subject-badge {
+  color: #2a2115;
+  border-color: var(--case-amber-700);
+  background: var(--case-amber-400);
+}
+
+.inspector,
+.entity-dialog,
+.research-panel {
+  color: var(--case-paper-ink);
+  border-color: var(--case-paper-border);
+  background: var(--case-paper-100);
+}
+
+.inspector-close {
+  color: var(--case-paper-muted) !important;
+  border-color: var(--case-paper-border) !important;
+  background: rgba(255, 255, 255, .34) !important;
+}
+
+.inspector__subtitle,
+.body-copy,
+.muted-copy,
+.section-heading span,
+.relation-properties label {
+  color: var(--case-paper-muted);
+}
+
+.inspector-section,
+.entity-dialog footer,
+.research-panel > footer {
+  border-color: rgba(83, 61, 37, .18);
+}
+
+.inspector .detective-input,
+.inspector .detective-select,
+.inspector .detective-plain-text,
+.relation-properties .detective-plain-text,
+.entity-attribute-row,
+.confidence-card,
+.source-link,
+.proposal-card,
+.claim-card,
+.proposal-stats div,
+.source-list a {
+  color: var(--case-paper-ink) !important;
+  border-color: var(--case-paper-border) !important;
+  background: var(--case-paper-50) !important;
+}
+
+.inspector .detective-button {
+  color: #514a40 !important;
+  border-color: var(--case-paper-border) !important;
+  background: rgba(255, 255, 255, .32) !important;
+}
+
+.inspector .detective-button:hover:not(:disabled) {
+  color: var(--case-amber-700) !important;
+  border-color: var(--case-amber-600) !important;
+  background: var(--case-paper-50) !important;
+}
+
+.inspector-object-date,
+.research-box,
+.research-subject-context {
+  color: #6f5835;
+  border-color: var(--case-amber-600);
+  background: var(--case-paper-200);
+}
+
+.material-drop-zone,
+.material-note-composer,
+.material-row,
+.research-history-row {
+  color: var(--case-paper-muted);
+  border-color: var(--case-paper-border);
+  background: rgba(255, 255, 255, .28);
+}
+
+.material-row strong,
+.research-history-row strong,
+.material-note-composer .detective-input,
+.material-note-composer .detective-plain-text {
+  color: var(--case-paper-ink) !important;
+}
+
+.toast {
+  color: var(--case-graphite-100);
+  border-color: var(--case-dark-border);
+  background: var(--case-graphite-850);
+}
+
+.research-summary {
+  color: #376047;
+  border-color: rgba(74, 123, 88, .32);
+  background: #e1ecdf;
+}
+
+.warning-box {
+  color: #805631;
+  border-color: rgba(155, 109, 45, .32);
+  background: #f2e4d4;
+}
+
+.research-queue-item > span { color: var(--case-success); }
+.research-queue-item.is-running > span { color: var(--case-warning); }
+.research-queue-item.is-error > span { color: var(--case-danger); }
+
+.material-row.is-pending,
+.material-row.is-changed,
+.research-history-row.is-running { border-left-color: var(--case-warning); }
+.material-row.is-processing { border-left-color: var(--case-info); }
+.material-row.is-processed,
+.research-history-row { border-left-color: var(--case-success); }
+.material-row.is-error,
+.research-history-row.is-error { border-left-color: var(--case-danger); }
