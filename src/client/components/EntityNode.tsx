@@ -37,7 +37,6 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
   return (
     <article className={`entity-card entity-card--${entity.type}${selected ? ' is-selected' : ''}${isActiveSelection ? ' is-active-selection' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}${entering ? ' is-entering' : ''}${removing ? ' is-removing' : ''}${motionState ? ` motion-${motionState}` : ''}`}>
       <Handle type="target" position={Position.Left} className="entity-handle" title="Отпустите здесь, чтобы связать карточки" aria-label="Вход связи" />
-      <span className="pushpin" />
       {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}
       <header className="entity-card__header">
         <div className="entity-card__portrait">
