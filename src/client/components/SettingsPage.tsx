@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Check, CircleAlert, ExternalLink, Focus, PlugZap, RefreshCw, Save, Settings2, ShieldAlert, Terminal, X } from 'lucide-react';
-import { Checkbox } from '@operator-ui/framework';
-import type { HealthStatus, McpServerSetting, McpSettingsView } from '../../shared/domain';
+import { Check, CircleAlert, ContactRound, ExternalLink, Focus, PlugZap, RefreshCw, Save, Settings2, ShieldAlert, Terminal, Unplug, X } from 'lucide-react';
+import { Button, Checkbox } from '@operator-ui/framework';
+import type { GoogleIntegrationStatus, HealthStatus, McpServerSetting, McpSettingsView } from '../../shared/domain';
 import { api } from '../lib/api';
 
 interface SettingsPageProps {
@@ -9,11 +9,14 @@ interface SettingsPageProps {
   refreshing: boolean;
   autoFitResearch: boolean;
   onAutoFitResearchChange: (enabled: boolean) => void;
+  googleStatus: GoogleIntegrationStatus;
+  disconnectingGoogle: boolean;
+  onDisconnectGoogle: () => void;
   onRefresh: () => void;
   onOpenBoard: () => void;
 }
 
-export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, onRefresh, onOpenBoard }: SettingsPageProps) {
+export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
   const { codex } = health;
   const [mcpSettings, setMcpSettings] = useState<McpSettingsView>();
   const [saving, setSaving] = useState(false);
@@ -74,6 +77,18 @@ export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitRes
             label="Автоматически вписывать новые связи"
           />
           <p className="settings-card__hint">Пока Codex добавляет карточки и связи, вся видимая схема остаётся в границах доски. После завершения масштаб снова управляется только вручную.</p>
+        </article>
+
+        <article className="settings-card google-integration-settings">
+          <header><ContactRound size={18} /><div><h2>Google Контакты</h2><p>Личная адресная книга · только чтение</p></div><StatusBadge ok={googleStatus.connected} /></header>
+          <p className="settings-card__hint">{googleStatus.message} При ручном запуске исследования импортированные поля карточки войдут в контекст Codex.</p>
+          {!googleStatus.configured ? <div className="setup-instruction"><code>GOOGLE_CLIENT_ID</code><code>GOOGLE_CLIENT_SECRET</code><span>Включите People API, создайте OAuth-клиент типа Web application и добавьте redirect URI <strong>http://localhost:8787/api/google/oauth/callback</strong>.</span></div> : (
+            <div className="google-integration-actions">
+              {googleStatus.connected
+                ? <Button disabled={disconnectingGoogle} onClick={onDisconnectGoogle}><Unplug size={13} />{disconnectingGoogle ? 'Отключаем…' : 'Отключить'}</Button>
+                : <Button variant="primary" onClick={() => window.location.assign('/api/google/oauth/start')}><ContactRound size={13} />Подключить Google</Button>}
+            </div>
+          )}
         </article>
       </div>
 

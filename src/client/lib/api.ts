@@ -1,4 +1,4 @@
-import type { CaseSummary, CreateCaseInput, HealthStatus, InvestigationCase, McpSettings, McpSettingsView, ResearchStreamEvent } from '../../shared/domain';
+import type { CaseSummary, CreateCaseInput, GoogleContact, GoogleIntegrationStatus, HealthStatus, InvestigationCase, McpSettings, McpSettingsView, ResearchStreamEvent } from '../../shared/domain';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -39,6 +39,9 @@ export const api = {
   refreshCodexStatus: () => request<HealthStatus>('/api/codex/status'),
   loadMcpSettings: () => request<McpSettingsView>('/api/mcp/settings'),
   saveMcpSettings: (settings: McpSettings) => request<McpSettingsView>('/api/mcp/settings', { method: 'PUT', body: JSON.stringify(settings) }),
+  googleStatus: () => request<GoogleIntegrationStatus>('/api/google/status'),
+  listGoogleContacts: (signal?: AbortSignal) => request<GoogleContact[]>('/api/google/contacts', { signal }),
+  disconnectGoogle: () => request<GoogleIntegrationStatus>('/api/google/connection', { method: 'DELETE' }),
   listCases: () => request<CaseSummary[]>('/api/cases'),
   loadCase: (caseId: string) => request<InvestigationCase>(`/api/cases/${caseId}`),
   createCase: (input: CreateCaseInput) => request<InvestigationCase>('/api/cases', { method: 'POST', body: JSON.stringify(input) }),

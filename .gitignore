@@ -6,4 +6,5 @@ dist-server/
 data/case.json
 data/cases/*.json
 data/mcp-settings.json
+data/google-contacts-token.json*
 *.log

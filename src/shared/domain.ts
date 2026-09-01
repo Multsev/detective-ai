@@ -19,7 +19,46 @@ export interface SourceReference {
   publisher: string;
   publishedAt: string;
   accessedAt: string;
-  kind?: 'web' | 'uploaded_file';
+  kind?: 'web' | 'uploaded_file' | 'google_contact';
+}
+
+export interface GoogleContactValue {
+  value: string;
+  type: string;
+}
+
+export interface GoogleContactOrganization {
+  name: string;
+  title: string;
+  department: string;
+}
+
+export interface GoogleContactUserField {
+  key: string;
+  value: string;
+}
+
+export interface GoogleContact {
+  id: string;
+  resourceName: string;
+  displayName: string;
+  givenName: string;
+  middleName: string;
+  familyName: string;
+  nickname: string;
+  phoneNumbers: GoogleContactValue[];
+  emailAddresses: GoogleContactValue[];
+  organizations: GoogleContactOrganization[];
+  biographies: string[];
+  userDefined: GoogleContactUserField[];
+  urls: GoogleContactValue[];
+}
+
+export interface GoogleIntegrationStatus {
+  configured: boolean;
+  connected: boolean;
+  scope: string;
+  message: string;
 }
 
 export interface CaseFact {

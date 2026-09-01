@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Plus, Search, ShieldCheck } from 'lucide-react';
+import { Bot, ContactRound, Plus, Search, ShieldCheck } from 'lucide-react';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, frameworkPersistence, IconButton, Select } from '@operator-ui/framework';
 import type {
   CaseSummary,
@@ -7,6 +7,8 @@ import type {
   CreateCaseInput,
   EntityResearchState,
   EntityType,
+  GoogleContact,
+  GoogleIntegrationStatus,
   HealthStatus,
   InvestigationCase,
   InvestigationEntity,
@@ -16,6 +18,7 @@ import type {
 import { entityTypes } from '../shared/domain';
 import { api } from './lib/api';
 import { isEntityVisible, mergeResearchResult, removeEntityFromCase } from './lib/graph';
+import { importGoogleContact as mergeGoogleContact } from './lib/googleContactImport';
 import { AddEntityDialog } from './components/AddEntityDialog';
 import { Board } from './components/Board';
 import { CreateCaseDialog } from './components/CreateCaseDialog';
@@ -24,6 +27,7 @@ import { EvidenceLegendControl } from './components/EvidenceLegendControl';
 import { Inspector } from './components/Inspector';
 import { LayerControl } from './components/LayerControl';
 import { SettingsPage } from './components/SettingsPage';
+import { GoogleContactsDialog } from './components/GoogleContactsDialog';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -34,7 +38,8 @@ export function App() {
     ok: false,
     codex: { installed: false, authenticated: false, ready: false, path: '', version: '', authMessage: '', checkedAt: '' },
   });
-  const [page, setPage] = useState<'board' | 'settings'>('board');
+  const [googleStatus, setGoogleStatus] = useState<GoogleIntegrationStatus>({ configured: false, connected: false, scope: '', message: 'Проверяем интеграцию…' });
+  const [page, setPage] = useState<'board' | 'settings'>(() => new URLSearchParams(window.location.search).has('google') ? 'settings' : 'board');
   const [selectedEntityId, setSelectedEntityId] = useState<string>();
   const [selectedRelationId, setSelectedRelationId] = useState<string>();
   const [visibleTypes, setVisibleTypes] = useState<Set<EntityType>>(() => new Set(entityTypes));
@@ -42,10 +47,13 @@ export function App() {
   const [autoFitResearch, setAutoFitResearch] = useState(() => frameworkPersistence.get<boolean>('detective:auto-fit-research', true, (value): value is boolean => typeof value === 'boolean'));
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
+  const [showGoogleContacts, setShowGoogleContacts] = useState(false);
   const [entityMenu, setEntityMenu] = useState<{ entityId: string; x: number; y: number }>();
   const [pendingDeleteEntityId, setPendingDeleteEntityId] = useState<string>();
   const [researchByEntityId, setResearchByEntityId] = useState<Record<string, EntityResearchState>>({});
   const [refreshingCodex, setRefreshingCodex] = useState(false);
+  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+  const [revealEntityRequest, setRevealEntityRequest] = useState<{ entityId: string; key: number }>();
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [message, setMessage] = useState<string>();
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -56,15 +64,22 @@ export function App() {
   }, [autoFitResearch]);
 
   useEffect(() => {
-    Promise.all([api.listCases(), api.health()])
-      .then(async ([summaries, healthStatus]) => {
+    Promise.all([api.listCases(), api.health(), api.googleStatus()])
+      .then(async ([summaries, healthStatus, currentGoogleStatus]) => {
         const loadedCase = await api.loadCase(summaries[0].id);
         setCaseSummaries(summaries);
         setInvestigationCase(loadedCase);
         setHealth(healthStatus);
+        setGoogleStatus(currentGoogleStatus);
         if (!healthStatus.codex.ready) setPage('settings');
       })
       .catch((error: Error) => setMessage(error.message));
+
+    const googleResult = new URLSearchParams(window.location.search).get('google');
+    if (googleResult) {
+      setMessage(googleResult === 'connected' ? 'Google Контакты подключены.' : 'Не удалось подключить Google Контакты. Повторите попытку.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const selectedEntity = useMemo(
@@ -157,6 +172,16 @@ export function App() {
     setSelectedEntityId(id);
     setSelectedRelationId(undefined);
     setShowAddDialog(false);
+  }
+
+  function addGoogleContact(contact: GoogleContact) {
+    if (!investigationCase) return;
+    const result = mergeGoogleContact(investigationCase, contact);
+    if (result.created) commit(() => result.investigationCase);
+    setSelectedEntityId(result.entityId);
+    setSelectedRelationId(undefined);
+    setRevealEntityRequest({ entityId: result.entityId, key: Date.now() });
+    setMessage(result.created ? `Контакт «${contact.displayName}» добавлен на доску.` : `Контакт «${contact.displayName}» уже есть на доске.`);
   }
 
   function addFact(kind: CaseFact['kind'], text: string) {
@@ -266,6 +291,19 @@ export function App() {
     }
   }
 
+  async function disconnectGoogle() {
+    setDisconnectingGoogle(true);
+    try {
+      setGoogleStatus(await api.disconnectGoogle());
+      setShowGoogleContacts(false);
+      setMessage('Google Контакты отключены. Уже импортированные карточки сохранены в деле.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Не удалось отключить Google Контакты.');
+    } finally {
+      setDisconnectingGoogle(false);
+    }
+  }
+
   if (!investigationCase) {
     return <div className="loading-screen"><span className="brand__mark">D</span><p>{message ?? 'Открываем материалы дела…'}</p></div>;
   }
@@ -288,7 +326,7 @@ export function App() {
   return (
     <main className={`app-shell ${inspectorVisible ? 'has-inspector' : ''}`} data-theme="dark">
       {page === 'settings' ? (
-        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
+        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} googleStatus={googleStatus} disconnectingGoogle={disconnectingGoogle} onDisconnectGoogle={disconnectGoogle} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
       ) : <>
       <section className="workspace">
         <header className="topbar">
@@ -303,6 +341,10 @@ export function App() {
           <div className="topbar__actions">
             <span className={`save-state save-state--${saveState}`}>{saveState === 'saving' ? 'Сохраняем…' : saveState === 'error' ? 'Ошибка сохранения' : 'Все изменения сохранены'}</span>
             <span className={`ai-status ${health.codex.ready ? 'is-online' : ''}`} title={health.codex.path}><Bot size={14} />{researching ? `${Object.values(researchByEntityId).filter((item) => item.status === 'running').length} в работе` : health.codex.ready ? 'Codex готов' : 'Ручной режим'}</span>
+            <button className="secondary-button" onClick={() => {
+              if (googleStatus.connected) setShowGoogleContacts(true);
+              else { setPage('settings'); setMessage(googleStatus.configured ? 'Сначала подключите аккаунт Google.' : 'Сначала настройте OAuth-клиент Google.'); }
+            }}><ContactRound size={16} />Контакты</button>
             <button className="secondary-button" onClick={() => setShowAddDialog(true)}><Plus size={16} />Карточка</button>
             <button className="primary-button topbar-research" disabled={!selectedEntity || !health.codex.ready || Boolean(selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running')} onClick={() => research('')}><ShieldCheck size={16} />{selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running' ? 'В работе…' : 'Найти связи'}</button>
             <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
@@ -316,6 +358,7 @@ export function App() {
           researchByEntityId={researchByEntityId}
           autoFitResearch={autoFitResearch}
           researching={researching}
+          revealEntityRequest={revealEntityRequest}
           onSelectEntity={(id) => { setSelectedEntityId(id); setSelectedRelationId(undefined); }}
           onOpenEntityMenu={(entityId, position) => setEntityMenu({ entityId, ...position })}
           onSelectRelation={(relation) => { setSelectedRelationId(relation.id); setSelectedEntityId(undefined); }}
@@ -348,6 +391,7 @@ export function App() {
         onClose={() => setShowCreateCaseDialog(false)}
         onCreate={createCase}
       />
+      <GoogleContactsDialog open={showGoogleContacts} onClose={() => setShowGoogleContacts(false)} onImport={addGoogleContact} />
       <ContextMenu open={Boolean(entityMenu)} x={entityMenu?.x ?? 0} y={entityMenu?.y ?? 0} onClose={() => setEntityMenu(undefined)}>
         <ContextMenuItem onClick={() => setEntityMenu(undefined)}>Открыть карточку</ContextMenuItem>
         <ContextMenuItem

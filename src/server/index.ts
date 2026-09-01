@@ -4,9 +4,10 @@ import { CaseStore } from './storage/caseStore.js';
 import { McpSettingsStore } from './storage/mcpSettingsStore.js';
 
 const port = Number(process.env.PORT ?? 8787);
+const host = process.env.HOST?.trim() || '127.0.0.1';
 const app = createApp({ store: new CaseStore(), mcpSettingsStore: new McpSettingsStore() });
 
-app.listen(port, () => {
-  console.log(`Detective AI API: http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`Detective AI API: http://localhost:${port} (loopback ${host})`);
   console.log('Codex CLI status is detected at runtime on /api/codex/status');
 });

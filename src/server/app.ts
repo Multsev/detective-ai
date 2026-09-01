@@ -8,6 +8,8 @@ import { CaseStore } from './storage/caseStore.js';
 import { CodexResearchRunner } from './research/codexResearchRunner.js';
 import { McpSettingsStore } from './storage/mcpSettingsStore.js';
 import { DocumentExtractionError, extractResearchDocument, maximumResearchFileBytes } from './research/documentExtractor.js';
+import { GoogleContactsService } from './google/googleContactsService.js';
+import { registerGoogleContactsRoutes } from './google/googleContactsRoutes.js';
 
 const researchRequestSchema = z.object({
   caseId: z.string().min(1),
@@ -25,11 +27,12 @@ const mcpSettingsInputSchema = z.object({
   updatedAt: z.string().default(''),
 });
 
-export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSettingsStore }) {
+export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSettingsStore; googleContactsService?: GoogleContactsService }) {
   const app = express();
   const mcpSettingsStore = options.mcpSettingsStore ?? new McpSettingsStore();
   const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maximumResearchFileBytes, files: 1, fields: 4 } });
   app.use(express.json({ limit: '2mb' }));
+  registerGoogleContactsRoutes(app, options.googleContactsService ?? new GoogleContactsService());
 
   app.get(['/api/health', '/api/codex/status'], async (_request, response, next) => {
     try {

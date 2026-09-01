@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Bot, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Bot, ContactRound, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
 import { IconButton, Select } from '@operator-ui/framework';
 import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
@@ -57,8 +57,8 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
           {relation.sourceIds.map((id) => {
             const source = sourceById.get(id);
             if (!source) return null;
-            return source.kind === 'uploaded_file'
-              ? <div className="source-link source-link--file" key={id}><span><FileText size={13} />{source.title}</span><small>загруженный файл</small></div>
+            return source.kind === 'uploaded_file' || source.kind === 'google_contact'
+              ? <div className="source-link source-link--file" key={id}><span>{source.kind === 'google_contact' ? <ContactRound size={13} /> : <FileText size={13} />}{source.title}</span><small>{source.kind === 'google_contact' ? 'личный контакт' : 'загруженный файл'}</small></div>
               : <a className="source-link" href={source.url} target="_blank" rel="noreferrer" key={id}>{source.title}<ArrowUpRight size={13} /></a>;
           })}
         </section>

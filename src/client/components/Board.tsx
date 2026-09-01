@@ -5,6 +5,7 @@ import {
   Controls,
   ReactFlow,
   useEdgesState,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
   type Edge,
@@ -27,13 +28,14 @@ interface BoardProps {
   researchByEntityId: Readonly<Record<string, EntityResearchState>>;
   autoFitResearch: boolean;
   researching: boolean;
+  revealEntityRequest?: { entityId: string; key: number };
   onSelectEntity: (entityId?: string) => void;
   onOpenEntityMenu: (entityId: string, position: { x: number; y: number }) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityId, visibleTypes, search, researchByEntityId, autoFitResearch, researching, revealEntityRequest, onSelectEntity, onOpenEntityMenu, onMoveEntity, onSelectRelation }: BoardProps) {
   const flowNodes = useMemo<EntityFlowNode[]>(() => investigationCase.entities.map((entity) => ({
     id: entity.id,
     type: 'entity',
@@ -100,6 +102,7 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
           relationCount={investigationCase.relations.length}
           researching={researching}
         />
+        <RevealEntity request={revealEntityRequest} />
         <Background variant={BackgroundVariant.Dots} gap={16} size={1.4} color="rgba(84,55,31,.28)" />
         <Controls showInteractive={false} />
       </ReactFlow>
@@ -108,6 +111,22 @@ export function Board({ investigationCase, selectedEntityId, visibleTypes, searc
       )}
     </div>
   );
+}
+
+function RevealEntity({ request }: { request?: { entityId: string; key: number } }) {
+  const { fitView, getNode } = useReactFlow<EntityFlowNode>();
+  const nodesInitialized = useNodesInitialized();
+
+  useEffect(() => {
+    if (!request || !nodesInitialized) return undefined;
+    const animationFrame = requestAnimationFrame(() => {
+      const node = getNode(request.entityId);
+      if (node) void fitView({ nodes: [node], padding: 0.8, duration: 320, maxZoom: 1.05 });
+    });
+    return () => cancelAnimationFrame(animationFrame);
+  }, [fitView, getNode, nodesInitialized, request]);
+
+  return null;
 }
 
 function ResearchAutoFit({ enabled, entityCount, relationCount, researching }: {
