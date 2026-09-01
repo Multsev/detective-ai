@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
-import { ArrowUpRight, Bot, Link2, Plus, Search, Sparkles } from 'lucide-react';
-import { IconButton } from '@operator-ui/framework';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, Bot, FileText, FileUp, Globe2, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { IconButton, Select } from '@operator-ui/framework';
 import type { CaseFact, EntityResearchState, InvestigationEntity, InvestigationRelation, SourceReference } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 
@@ -13,7 +13,7 @@ interface InspectorProps {
   research?: EntityResearchState;
   onAddFact: (kind: CaseFact['kind'], text: string) => void;
   onAddRelation: (targetId: string, label: string) => void;
-  onResearch: (question: string) => void;
+  onResearch: (question: string, file?: File) => void;
   onClose: () => void;
 }
 
@@ -21,9 +21,20 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
   const [entryText, setEntryText] = useState('');
   const [entryKind, setEntryKind] = useState<CaseFact['kind']>('claim');
   const [researchQuestion, setResearchQuestion] = useState('');
+  const [researchMode, setResearchMode] = useState<'web' | 'file'>('web');
+  const [researchFile, setResearchFile] = useState<File>();
+  const [fileError, setFileError] = useState<string>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [targetId, setTargetId] = useState('');
   const [relationLabel, setRelationLabel] = useState('');
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
+
+  useEffect(() => {
+    setResearchMode('web');
+    setResearchFile(undefined);
+    setFileError(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [entity?.id]);
 
   if (relation) {
     const visual = evidenceStyles[relation.status];
@@ -45,7 +56,10 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
           {relation.sourceIds.length === 0 && <p className="muted-copy">Источник пока не прикреплён.</p>}
           {relation.sourceIds.map((id) => {
             const source = sourceById.get(id);
-            return source && <a className="source-link" href={source.url} target="_blank" rel="noreferrer" key={id}>{source.title}<ArrowUpRight size={13} /></a>;
+            if (!source) return null;
+            return source.kind === 'uploaded_file'
+              ? <div className="source-link source-link--file" key={id}><span><FileText size={13} />{source.title}</span><small>загруженный файл</small></div>
+              : <a className="source-link" href={source.url} target="_blank" rel="noreferrer" key={id}>{source.title}<ArrowUpRight size={13} /></a>;
           })}
         </section>
       </aside>
@@ -81,10 +95,26 @@ export function Inspector({ entity, relation, allEntities, sources, aiConfigured
 
       <section className="research-box">
         <div className="research-box__title"><Sparkles size={15} /><strong>AI-исследование</strong></div>
-        {research && <div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? 'Идёт работа' : research.status === 'completed' ? 'Последнее исследование готово' : 'Исследование завершилось с ошибкой'}</strong><span>{research.message}</span>{research.result && <p>{research.result.summary}</p>}</div>}
-        <textarea value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)} placeholder="Что проверить? Например: найти связанные компании и официальные источники" />
-        <button className="primary-button" disabled={research?.status === 'running' || !aiConfigured} onClick={() => onResearch(researchQuestion)}>
-          <Bot size={15} />{research?.status === 'running' ? 'Идёт поиск…' : aiConfigured ? research ? 'Исследовать снова' : 'Исследовать' : 'Codex не готов'}
+        {research && <div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? 'Идёт работа' : research.status === 'completed' ? 'Последнее исследование готово' : 'Исследование завершилось с ошибкой'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div>}
+        <label className="research-source-select"><span>Источник</span><Select value={researchMode} disabled={research?.status === 'running'} onChange={(event) => setResearchMode(event.target.value as 'web' | 'file')}><option value="web">Открытые источники</option><option value="file">PDF или Markdown-файл</option></Select></label>
+        {researchMode === 'file' && <div className="research-file-picker">
+          <input ref={fileInputRef} tabIndex={-1} type="file" accept=".pdf,.md,.markdown,application/pdf,text/markdown" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file && file.size > 12 * 1024 * 1024) {
+              setResearchFile(undefined);
+              setFileError('Файл больше 12 МБ.');
+              return;
+            }
+            setResearchFile(file);
+            setFileError(undefined);
+          }} />
+          <button type="button" className="secondary-button" onClick={() => fileInputRef.current?.click()}><FileUp size={14} />Выбрать файл</button>
+          <div title={researchFile?.name}>{researchFile ? <><FileText size={13} /><span>{researchFile.name}</span><small>{Math.max(1, Math.round(researchFile.size / 1024))} КБ</small></> : <><Globe2 size={13} /><span>PDF, .md или .markdown</span><small>до 12 МБ</small></>}</div>
+          {fileError && <p>{fileError}</p>}
+        </div>}
+        <textarea value={researchQuestion} onChange={(event) => setResearchQuestion(event.target.value)} placeholder={researchMode === 'file' ? 'Что найти или проверить в документе?' : 'Что проверить? Например: найти связанные компании и официальные источники'} />
+        <button className="primary-button" disabled={research?.status === 'running' || !aiConfigured || (researchMode === 'file' && !researchFile)} onClick={() => onResearch(researchQuestion, researchMode === 'file' ? researchFile : undefined)}>
+          <Bot size={15} />{research?.status === 'running' ? 'Идёт исследование…' : !aiConfigured ? 'Codex не готов' : researchMode === 'file' ? 'Исследовать файл' : research ? 'Исследовать снова' : 'Исследовать'}
         </button>
       </section>
 

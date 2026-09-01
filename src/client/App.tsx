@@ -11,6 +11,7 @@ import type {
   InvestigationCase,
   InvestigationEntity,
   InvestigationRelation,
+  ResearchStreamEvent,
 } from '../shared/domain';
 import { entityTypes } from '../shared/domain';
 import { api } from './lib/api';
@@ -186,7 +187,7 @@ export function App() {
     commit((current) => ({ ...current, relations: [...current.relations, relation] }));
   }
 
-  async function research(question: string, focusEntityId = selectedEntityId) {
+  async function research(question: string, focusEntityId = selectedEntityId, file?: File) {
     const focusEntity = investigationCase?.entities.find((entity) => entity.id === focusEntityId);
     if (!focusEntityId || !focusEntity || !investigationCase) {
       setMessage('Сначала выберите карточку для исследования.');
@@ -201,9 +202,9 @@ export function App() {
       setMessage(`Исследование карточки «${focusEntity.title}» уже выполняется.`);
       return;
     }
-    const normalizedQuestion = question.trim() || 'Найди связанные компании, людей, документы, события и проверяемые отношения.';
+    const normalizedQuestion = question.trim() || (file ? 'Извлеки из документа факты, сущности, связи и вопросы, относящиеся к выбранной карточке.' : 'Найди связанные компании, людей, документы, события и проверяемые отношения.');
     const initialResearch: EntityResearchState = {
-      entityId: focusEntityId, status: 'running', stage: 'starting', message: 'Подготавливаю полный контекст дела.', question: normalizedQuestion, startedAt: new Date().toISOString(),
+      entityId: focusEntityId, status: 'running', stage: 'starting', message: file ? `Загружаю файл «${file.name}».` : 'Подготавливаю полный контекст дела.', question: normalizedQuestion, startedAt: new Date().toISOString(), source: file ? 'file' : 'web', fileName: file?.name,
     };
     setSelectedEntityId(focusEntityId);
     setSelectedRelationId(undefined);
@@ -211,12 +212,14 @@ export function App() {
     setMessage(undefined);
     try {
       let streamedResult: EntityResearchState['result'];
-      await api.researchStream(investigationCase.id, focusEntityId, normalizedQuestion, (event) => {
+      const onEvent = (event: ResearchStreamEvent) => {
         if (event.type === 'status') {
           setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), stage: event.stage, message: event.message } }));
         }
         if (event.type === 'result') streamedResult = event.result;
-      });
+      };
+      if (file) await api.researchFileStream(investigationCase.id, focusEntityId, normalizedQuestion, file, onEvent);
+      else await api.researchStream(investigationCase.id, focusEntityId, normalizedQuestion, onEvent);
       if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
       const finalResult = streamedResult;
       commit((current) => {
@@ -327,7 +330,7 @@ export function App() {
         research={selectedEntity ? researchByEntityId[selectedEntity.id] : undefined}
         onAddFact={addFact}
         onAddRelation={addRelation}
-        onResearch={research}
+        onResearch={(question, file) => research(question, selectedEntityId, file)}
         onClose={() => { setSelectedEntityId(undefined); setSelectedRelationId(undefined); }}
       />}
       </>}

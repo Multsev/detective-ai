@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import path from 'node:path';
 import { z } from 'zod';
 import type { InvestigationCase, McpSettings } from '../shared/domain.js';
@@ -6,6 +7,7 @@ import { detectCodex } from './codex/codexDetector.js';
 import { CaseStore } from './storage/caseStore.js';
 import { CodexResearchRunner } from './research/codexResearchRunner.js';
 import { McpSettingsStore } from './storage/mcpSettingsStore.js';
+import { DocumentExtractionError, extractResearchDocument, maximumResearchFileBytes } from './research/documentExtractor.js';
 
 const researchRequestSchema = z.object({
   caseId: z.string().min(1),
@@ -26,6 +28,7 @@ const mcpSettingsInputSchema = z.object({
 export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSettingsStore }) {
   const app = express();
   const mcpSettingsStore = options.mcpSettingsStore ?? new McpSettingsStore();
+  const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maximumResearchFileBytes, files: 1, fields: 4 } });
   app.use(express.json({ limit: '2mb' }));
 
   app.get(['/api/health', '/api/codex/status'], async (_request, response, next) => {
@@ -137,14 +140,62 @@ export function createApp(options: { store: CaseStore; mcpSettingsStore?: McpSet
     }
   });
 
+  app.post('/api/research/file/stream', documentUpload.single('file'), async (request, response) => {
+    try {
+      const { caseId, entityId, question } = researchRequestSchema.parse(request.body);
+      if (!request.file) {
+        response.status(400).json({ error: 'Выберите PDF или Markdown-файл.' });
+        return;
+      }
+      const investigationCase = await options.store.load(caseId);
+      const focusEntity = investigationCase.entities.find((entity) => entity.id === entityId);
+      if (!focusEntity) {
+        response.status(404).json({ error: 'Карточка для исследования не найдена.' });
+        return;
+      }
+
+      const codex = await detectCodex();
+      if (!codex.ready) {
+        response.status(503).json({ error: codex.installed ? 'Codex CLI найден, но требуется авторизация.' : 'Codex CLI не найден. Анализ файла отключён.' });
+        return;
+      }
+
+      const document = await extractResearchDocument({ originalName: request.file.originalname, mimeType: request.file.mimetype, buffer: request.file.buffer });
+
+      response.status(200);
+      response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-cache, no-transform');
+      response.setHeader('X-Accel-Buffering', 'no');
+      response.flushHeaders();
+      const emit = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
+      emit({ type: 'status', stage: 'extracting', message: `Текст файла «${document.fileName}» извлечён, начинаю анализ.` });
+      if (document.truncated) emit({ type: 'status', stage: 'warning', message: 'Документ очень большой: анализируется первые 180 000 символов.' });
+
+      const runner = new CodexResearchRunner(codex.path, process.cwd(), await mcpSettingsStore.load());
+      const result = await runner.investigate(focusEntity, investigationCase, question, emit, document);
+      emit({ type: 'result', result });
+      response.end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка анализа файла.';
+      if (response.headersSent) {
+        response.write(`${JSON.stringify({ type: 'error', message })}\n`);
+        response.end();
+      } else {
+        response.status(error instanceof z.ZodError || error instanceof DocumentExtractionError ? 400 : 500).json({ error: message });
+      }
+    }
+  });
+
   const clientDirectory = path.join(process.cwd(), 'dist');
   app.use(express.static(clientDirectory));
   app.get(/^(?!\/api).*/, (_request, response) => response.sendFile(path.join(clientDirectory, 'index.html')));
 
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     console.error(error);
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка сервера.';
-    response.status(error instanceof z.ZodError ? 400 : 500).json({ error: message });
+    const message = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE'
+      ? 'Файл превышает ограничение 12 МБ.'
+      : error instanceof Error ? error.message : 'Неизвестная ошибка сервера.';
+    response.status(error instanceof z.ZodError || error instanceof multer.MulterError ? 400 : 500).json({ error: message });
   });
 
   return app;

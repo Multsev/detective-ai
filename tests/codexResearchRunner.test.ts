@@ -10,6 +10,7 @@ describe('Codex research stream', () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'fake-codex-runner-'));
     const executable = path.join(directory, 'codex');
     const promptCapture = path.join(directory, 'prompt.txt');
+    const argsCapture = path.join(directory, 'args.json');
     const fakeResult = {
       summary: 'Найдена проверяемая связь.',
       identityAssessment: 'Идентичность требует подтверждения.',
@@ -23,6 +24,7 @@ describe('Codex research stream', () => {
 const fs = require('fs');
 const args = process.argv.slice(2);
 const outputIndex = args.indexOf('--output-last-message');
+fs.writeFileSync(${JSON.stringify(argsCapture)}, JSON.stringify(args));
 let prompt = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { prompt += chunk; });
@@ -56,6 +58,18 @@ process.stdin.on('end', () => {
       expect(prompt).toContain('$detective-osint');
       expect(prompt).toContain('Полный контекст текущего дела');
       expect(prompt).toContain('sourceIds');
+      expect(JSON.parse(await readFile(argsCapture, 'utf8'))).toContain('--search');
+
+      const documentResult = await new CodexResearchRunner(executable, directory).investigate(
+        investigationCase.entities[0], investigationCase, 'Найди факты в отчёте', () => undefined,
+        { fileName: 'report.md', mediaType: 'text/markdown', text: 'ООО «Пример» связано с объектом.', sha256: 'a'.repeat(64), truncated: false },
+      );
+      const documentArgs = JSON.parse(await readFile(argsCapture, 'utf8')) as string[];
+      expect(documentArgs).not.toContain('--search');
+      expect(documentArgs).toContain('features.shell_tool=false');
+      expect(documentArgs).toContain('web_search="disabled"');
+      expect(await readFile(promptCapture, 'utf8')).toContain('Документ передан как JSON-данные');
+      expect(documentResult.sources.at(-1)).toMatchObject({ title: 'report.md', kind: 'uploaded_file' });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -19,6 +19,7 @@ export interface SourceReference {
   publisher: string;
   publishedAt: string;
   accessedAt: string;
+  kind?: 'web' | 'uploaded_file';
 }
 
 export interface CaseFact {
@@ -175,7 +176,17 @@ export interface EntityResearchState {
   message: string;
   question: string;
   startedAt: string;
+  source: 'web' | 'file';
+  fileName?: string;
   result?: ResearchResult;
+}
+
+export interface ResearchDocument {
+  fileName: string;
+  mediaType: 'application/pdf' | 'text/markdown';
+  text: string;
+  sha256: string;
+  truncated: boolean;
 }
 
 export type ResearchStreamEvent =

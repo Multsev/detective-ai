@@ -10,6 +10,30 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+async function consumeResearchStream(response: Response, onEvent: (event: ResearchStreamEvent) => void): Promise<void> {
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload.error ?? 'Не удалось запустить Codex.');
+  }
+  if (!response.body) throw new Error('Сервер не вернул поток исследования.');
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as ResearchStreamEvent;
+      onEvent(event);
+      if (event.type === 'error') throw new Error(event.message);
+    }
+  }
+}
+
 export const api = {
   health: () => request<HealthStatus>('/api/health'),
   refreshCodexStatus: () => request<HealthStatus>('/api/codex/status'),
@@ -28,26 +52,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ caseId, entityId, question }),
     });
-    if (!response.ok) {
-      const payload = await response.json();
-      throw new Error(payload.error ?? 'Не удалось запустить Codex.');
-    }
-    if (!response.body) throw new Error('Сервер не вернул поток исследования.');
-
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += value;
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line) as ResearchStreamEvent;
-        onEvent(event);
-        if (event.type === 'error') throw new Error(event.message);
-      }
-    }
+    await consumeResearchStream(response, onEvent);
+  },
+  async researchFileStream(caseId: string, entityId: string, question: string, file: File, onEvent: (event: ResearchStreamEvent) => void) {
+    const body = new FormData();
+    body.set('caseId', caseId);
+    body.set('entityId', entityId);
+    body.set('question', question);
+    body.set('file', file);
+    await consumeResearchStream(await fetch('/api/research/file/stream', { method: 'POST', body }), onEvent);
   },
 };
