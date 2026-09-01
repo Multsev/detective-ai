@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, ContactRound, FileText, FileUp, IdCard, Plus, Search, StickyNote, Trash2 } from 'lucide-react';
 import { Button, IconButton, PlainTextEditor, Select, TextField } from '../ui';
 import type { CaseMaterial, EntityAttributeKind, EntityResearchState, InvestigationEntity, InvestigationRelation, ResearchRun, SourceReference } from '../../shared/domain';
@@ -35,7 +35,6 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteName, setNoteName] = useState('Заметка');
   const [noteContent, setNoteContent] = useState('');
-  const materialFileInput = useRef<HTMLInputElement>(null);
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
 
   useEffect(() => {
@@ -155,11 +154,14 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
           event.preventDefault();
           for (const file of event.dataTransfer.files) onAddFileMaterial(file);
         }}>
-          <input ref={materialFileInput} type="file" multiple accept=".pdf,.md,.markdown,application/pdf,text/markdown" onChange={(event) => {
-            for (const file of event.target.files ?? []) onAddFileMaterial(file);
-            event.currentTarget.value = '';
-          }} />
-          <FileUp size={15} /><span>Перетащите PDF или Markdown</span><Button onClick={() => materialFileInput.current?.click()}>Выбрать</Button>
+          <FileUp size={15} /><span>Перетащите PDF или Markdown</span>
+          <label className="detective-button material-file-trigger">
+            Выбрать
+            <input type="file" multiple accept=".pdf,.md,.markdown,application/pdf,text/markdown" aria-label="Выбрать материалы на компьютере" onChange={(event) => {
+              for (const file of event.target.files ?? []) onAddFileMaterial(file);
+              event.currentTarget.value = '';
+            }} />
+          </label>
         </div>
         <div className="material-toolbar"><Button onClick={() => setNoteOpen((current) => !current)}><Plus size={12} />Заметка</Button></div>
         {noteOpen && <div className="material-note-composer">

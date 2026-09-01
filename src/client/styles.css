@@ -229,3 +229,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 :root[data-motion="reduced"] .entity-card.is-entering{animation-name:reduced-fade}:root[data-motion="reduced"] .entity-card.is-removing{animation-name:reduced-fade-out}:root[data-motion="reduced"] .entity-card.research-running,:root[data-motion="reduced"] .research-queue-trigger>svg{animation:none!important}
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}
 @keyframes reduced-fade{from{opacity:0}to{opacity:1}}@keyframes reduced-fade-out{to{opacity:0}}
+
+.material-file-trigger{position:relative;cursor:pointer}
+.material-file-trigger>input{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;opacity:0}
