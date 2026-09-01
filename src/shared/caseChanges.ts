@@ -105,6 +105,48 @@ export function appendCaseChanges(investigationCase: InvestigationCase, changes:
   return { ...investigationCase, changes: [...(investigationCase.changes ?? []), ...changes.filter((change) => !existing.has(change.id))].slice(-1000) };
 }
 
+export function recordResearchRunOutcome(
+  investigationCase: InvestigationCase,
+  researchRunId: string,
+  status: 'completed' | 'error',
+  summary: string,
+  detectedAt = new Date().toISOString(),
+): InvestigationCase {
+  const run = (investigationCase.researchRuns ?? []).find((candidate) => candidate.id === researchRunId);
+  if (!run || run.entityIds.length === 0) return investigationCase;
+  const entityIds = run.entityIds.filter((entityId) => investigationCase.entities.some((entity) => entity.id === entityId));
+  if (entityIds.length === 0) return investigationCase;
+  const kind = status === 'completed' ? 'research_completed' : 'research_failed';
+  const modeTitle = run.mode === 'relationships' ? 'Поиск связи' : run.mode === 'question_resolution' ? 'Проверка вопроса' : 'Поиск информации';
+  const finalSummary = summary.trim() || (status === 'completed' ? 'Исследование завершено без новых данных.' : 'Исследование завершилось ошибкой.');
+  const substantiveChanges = run.changeIds.filter((changeId) => {
+    const change = (investigationCase.changes ?? []).find((candidate) => candidate.id === changeId);
+    return change && change.kind !== 'research_completed' && change.kind !== 'research_failed';
+  }).length;
+  const outcome = makeChange({
+    researchRunId,
+    kind,
+    targetType: 'entity',
+    targetId: entityIds[0],
+    entityIds,
+    title: status === 'completed' ? `${modeTitle} завершён` : `${modeTitle}: ошибка`,
+    summary: finalSummary,
+    fields: [
+      { field: 'Запрос', after: run.question || 'Запрос не указан' },
+      { field: 'Результат', after: finalSummary },
+      { field: 'Изменений', after: String(substantiveChanges) },
+    ],
+    detectedAt,
+  });
+  const withOutcome = appendCaseChanges(investigationCase, [outcome]);
+  return {
+    ...withOutcome,
+    researchRuns: (withOutcome.researchRuns ?? []).map((candidate) => candidate.id === researchRunId
+      ? { ...candidate, changeIds: [...new Set([...candidate.changeIds, outcome.id])] }
+      : candidate),
+  };
+}
+
 export function getUnreadCaseChanges(investigationCase: InvestigationCase): CaseChange[] {
   return (investigationCase.changes ?? []).filter((change) => !change.readAt).sort((left, right) => right.detectedAt.localeCompare(left.detectedAt));
 }

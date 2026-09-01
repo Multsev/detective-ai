@@ -46,7 +46,7 @@ import { getEntityMaterials, getEntityResearchRuns, getPendingEntityMaterials } 
 import { researchFileAccept } from '../shared/researchFileTypes';
 import { QuestionAnswerDialog } from './components/QuestionAnswerDialog';
 import { UpdateCenter } from './components/UpdateCenter';
-import { getEntityCaseChanges, getUnreadCaseChanges, markCaseChangesRead } from '../shared/caseChanges';
+import { getEntityCaseChanges, getUnreadCaseChanges, markCaseChangesRead, recordResearchRunOutcome } from '../shared/caseChanges';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type EntityMotionState = 'updated' | 'no-change' | 'error';
@@ -603,7 +603,8 @@ export function App() {
       const hasNewInformation = totals.attributes + totals.entities + totals.relations + totals.sources + totals.questions + totals.updatedRelations > 0;
       const finishedAt = new Date().toISOString();
       const finalCase = investigationCaseRef.current ?? investigationCase;
-      await persistResearchCase({ ...finalCase, researchRuns: (finalCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
+      const finalSummary = hasNewInformation ? (summaries.at(-1) ?? 'Материалы дела дополнены.') : 'Новых сведений не найдено. Новые карточки и связи не созданы.';
+      const completedCase = { ...finalCase, researchRuns: (finalCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
         ...candidate,
         status: 'completed' as const,
         finishedAt,
@@ -612,8 +613,9 @@ export function App() {
         addedEntityIds: [...addedEntityIds],
         addedRelationIds: [...addedRelationIds],
         changeIds: [...changeIds],
-        summary: summaries.at(-1) ?? (hasNewInformation ? 'Материалы дела дополнены.' : 'Новых сведений не найдено.'),
-      } : candidate) });
+        summary: finalSummary,
+      } : candidate) };
+      await persistResearchCase(recordResearchRunOutcome(completedCase, runId, 'completed', finalSummary, finishedAt));
       showEntityMotion([focusEntityId], hasNewInformation ? 'updated' : 'no-change');
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: {
         ...(current[focusEntityId] ?? initialResearch), status: 'completed', stage: 'completed',
@@ -625,11 +627,11 @@ export function App() {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось найти информацию об объекте.';
       const failedAt = new Date().toISOString();
       const latestCase = investigationCaseRef.current ?? investigationCase;
-      const failedCase = {
+      const failedCase = recordResearchRunOutcome({
         ...latestCase,
         materials: (latestCase.materials ?? []).map((material) => activeMaterialId === material.id ? { ...material, status: 'error' as const, updatedAt: failedAt, errorMessage } : material.status === 'processing' && pendingMaterials.some((candidate) => candidate.id === material.id) ? { ...material, status: 'pending' as const, updatedAt: failedAt } : material),
         researchRuns: (latestCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: summaries.at(-1) ?? '' } : candidate),
-      };
+      }, runId, 'error', errorMessage, failedAt);
       try { await persistResearchCase(failedCase); } catch { /* Основная ошибка исследования важнее ошибки фиксации статуса. */ }
       showEntityMotion([focusEntityId], 'error');
       setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), status: 'error', stage: 'error', message: errorMessage } }));
@@ -716,10 +718,13 @@ export function App() {
           nextSteps: outcome.result.questions.map((item) => item.text),
           addedEntityIds: outcome.investigationCase.entities.filter((entity) => !previousEntityIds.has(entity.id)).map((entity) => entity.id),
           addedRelationIds: outcome.investigationCase.relations.filter((relation) => !previousRelationIds.has(relation.id)).map((relation) => relation.id),
-          changeIds: outcome.changes.map((change) => change.id), summary: outcome.result.summary,
+          changeIds: outcome.changes.map((change) => change.id), summary: outcome.addedRelationCount || outcome.updatedRelationCount || outcome.addedEntityCount
+            ? (outcome.result.summary || 'Найдены новые или обновлённые связи.')
+            : 'Новых подтверждаемых связей между выбранными объектами не найдено. Новые карточки и связи не созданы.',
         } : candidate),
       };
-      await persistResearchCase(completedCase);
+      const completedRun = completedCase.researchRuns?.find((candidate) => candidate.id === runId);
+      await persistResearchCase(recordResearchRunOutcome(completedCase, runId, 'completed', completedRun?.summary ?? '', finishedAt));
       showEntityMotion(uniqueEntityIds, outcome.hasNewInformation ? 'updated' : 'no-change');
       const completionMessage = outcome.addedRelationCount || outcome.updatedRelationCount
         ? `Связи найдены: добавлено ${outcome.addedRelationCount}, обновлено ${outcome.updatedRelationCount}; новых объектов: ${outcome.addedEntityCount}.`
@@ -734,7 +739,10 @@ export function App() {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось найти связи.';
       const failedAt = new Date().toISOString();
       const latest = investigationCaseRef.current ?? investigationCase;
-      try { await persistResearchCase({ ...latest, researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: '' } : candidate) }); } catch { /* Основная ошибка важнее фиксации статуса. */ }
+      try {
+        const failedCase = { ...latest, researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: '' } : candidate) };
+        await persistResearchCase(recordResearchRunOutcome(failedCase, runId, 'error', errorMessage, failedAt));
+      } catch { /* Основная ошибка важнее фиксации статуса. */ }
       showEntityMotion(uniqueEntityIds, 'error');
       setResearchByEntityId((current) => {
         const next = { ...current };
@@ -784,10 +792,11 @@ export function App() {
       const saved = {
         ...outcome.investigationCase,
         researchRuns: (outcome.investigationCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
-          ...candidate, status: 'completed' as const, finishedAt, checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)), nextSteps: outcome.result.questions.map((item) => item.text), addedEntityIds, addedRelationIds, changeIds: outcome.changes.map((change) => change.id), summary: outcome.result.summary,
+          ...candidate, status: 'completed' as const, finishedAt, checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)), nextSteps: outcome.result.questions.map((item) => item.text), addedEntityIds, addedRelationIds, changeIds: outcome.changes.map((change) => change.id), summary: outcome.question.status === 'answered' ? (outcome.result.summary || 'Вопрос разрешён.') : outcome.question.status === 'partial' ? (outcome.result.summary || 'Найден частичный ответ.') : 'Проверяемого ответа пока нет. Новые карточки и связи не созданы.',
         } : candidate),
       };
-      await persistResearchCase(saved);
+      const savedRun = saved.researchRuns?.find((candidate) => candidate.id === runId);
+      await persistResearchCase(recordResearchRunOutcome(saved, runId, 'completed', savedRun?.summary ?? '', finishedAt));
       const statusText = outcome.question.status === 'answered' ? 'Вопрос разрешён, ответ преобразован в связи.' : outcome.question.status === 'partial' ? 'Найден частичный ответ — вопрос остаётся в работе.' : outcome.question.status === 'contradicted' ? 'Источники противоречат друг другу.' : 'Проверяемого ответа пока нет.';
       setResearchByEntityId((current) => ({ ...current, [questionId]: { ...(current[questionId] ?? state), status: 'completed', stage: 'completed', message: statusText, result: outcome.result } }));
       showEntityMotion([questionId, ...addedEntityIds], outcome.hasNewInformation || outcome.question.status !== details.status ? 'updated' : 'no-change');
@@ -796,11 +805,14 @@ export function App() {
       const errorMessage = error instanceof Error ? error.message : 'Не удалось доисследовать вопрос.';
       const latest = investigationCaseRef.current ?? currentCase;
       const failedAt = new Date().toISOString();
-      try { await persistResearchCase({
+      try {
+        const failedCase = {
         ...latest,
         entities: latest.entities.map((entity) => entity.id === questionId ? { ...entity, question: { ...(getQuestionDetails(entity, latest) ?? details), status: details.status } } : entity),
         researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, summary: errorMessage } : candidate),
-      }); } catch { /* Сохраняем исходную ошибку. */ }
+        };
+        await persistResearchCase(recordResearchRunOutcome(failedCase, runId, 'error', errorMessage, failedAt));
+      } catch { /* Сохраняем исходную ошибку. */ }
       setResearchByEntityId((current) => ({ ...current, [questionId]: { ...(current[questionId] ?? state), status: 'error', stage: 'error', message: errorMessage } }));
       showEntityMotion([questionId], 'error'); setMessage(errorMessage);
     }
@@ -1146,18 +1158,21 @@ export function App() {
         entity={inspectorEntity}
         relation={selectedRelation}
         allEntities={displayedCase.entities}
+        allRelations={displayedCase.relations}
         sources={displayedCase.sources}
         research={inspectorEntity ? researchByEntityId[inspectorEntity.id] : undefined}
         provenance={inspectorEntity ? getEntityProvenance(displayedCase, inspectorEntity) : undefined}
         materials={inspectorEntity ? getEntityMaterials(displayedCase, inspectorEntity.id) : []}
         researchRuns={inspectorEntity ? getEntityResearchRuns(displayedCase, inspectorEntity.id) : []}
         changes={inspectorEntity ? getEntityCaseChanges(displayedCase, inspectorEntity.id) : selectedRelation ? recentChanges.filter((change) => change.targetType === 'relation' && change.targetId === selectedRelation.id) : []}
+        caseChanges={recentChanges}
         onAddAttribute={addAttribute}
         onAddFileMaterial={(file) => void addFileMaterial(file)}
         onAddNoteMaterial={(name, content) => void addNoteMaterial(name, content)}
         onRemoveMaterial={(materialId) => void removeMaterial(materialId)}
         onUpdateRelation={updateSelectedRelation}
         onMarkChangesRead={markChangesRead}
+        onOpenEntity={openUpdateEntity}
         onClose={() => { setInspectorEntityId(undefined); setSelectedRelationId(undefined); }}
       />}
       </>}

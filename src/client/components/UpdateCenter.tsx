@@ -7,6 +7,7 @@ const changeLabels: Record<CaseChange['kind'], string> = {
   entity_added: 'Новая карточка', entity_updated: 'Карточка обновлена', question_updated: 'Вопрос обновлён',
   relation_added: 'Новая связь', relation_updated: 'Связь обновлена', source_added: 'Новый источник',
   source_rechecked: 'Источник проверен', source_updated: 'Источник обновлён',
+  research_completed: 'Исследование завершено', research_failed: 'Ошибка исследования',
 };
 
 export function UpdateCenter({ changes, entities, onOpenEntity, onMarkRead, onMarkAllRead }: {

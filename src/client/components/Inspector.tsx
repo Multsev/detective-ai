@@ -12,18 +12,21 @@ interface InspectorProps {
   entity?: InvestigationEntity;
   relation?: InvestigationRelation;
   allEntities: InvestigationEntity[];
+  allRelations: InvestigationRelation[];
   sources: SourceReference[];
   research?: EntityResearchState;
   provenance?: EntityProvenance;
   materials: CaseMaterial[];
   researchRuns: ResearchRun[];
   changes: CaseChange[];
+  caseChanges: CaseChange[];
   onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
   onAddFileMaterial: (file: File) => void;
   onAddNoteMaterial: (name: string, content: string) => void;
   onRemoveMaterial: (materialId: string) => void;
   onUpdateRelation: (input: { label: string; explanation: string }) => void;
   onMarkChangesRead: (changeIds: string[]) => void;
+  onOpenEntity: (entityId: string) => void;
   onClose: () => void;
 }
 
@@ -40,7 +43,7 @@ function sourceFreshnessLabel(source: SourceReference): string {
   return checkedAt ? `проверено ${new Date(checkedAt.length <= 10 ? `${checkedAt}T00:00:00` : checkedAt).toLocaleDateString('ru-RU')}` : 'проверено';
 }
 
-export function Inspector({ entity, relation, allEntities, sources, research, provenance, materials, researchRuns, changes, onAddAttribute, onAddFileMaterial, onAddNoteMaterial, onRemoveMaterial, onUpdateRelation, onMarkChangesRead, onClose }: InspectorProps) {
+export function Inspector({ entity, relation, allEntities, allRelations, sources, research, provenance, materials, researchRuns, changes, caseChanges, onAddAttribute, onAddFileMaterial, onAddNoteMaterial, onRemoveMaterial, onUpdateRelation, onMarkChangesRead, onOpenEntity, onClose }: InspectorProps) {
   const [relationLabel, setRelationLabel] = useState('');
   const [relationExplanation, setRelationExplanation] = useState('');
   const [attributeKey, setAttributeKey] = useState('');
@@ -214,7 +217,29 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
 
       {researchRuns.length > 0 && <details className="inspector-section research-history-section">
         <summary><span>История исследований</span><small>{researchRuns.length}</small></summary>
-        <div className="research-history-list">{researchRuns.slice(0, 8).map((run) => <div className={`research-history-row is-${run.status}`} key={run.id}><span>{run.status === 'completed' ? '✓' : run.status === 'error' ? '!' : '…'}</span><div><strong>{run.mode === 'relationships' ? 'Поиск связи' : run.mode === 'question_resolution' ? 'Проверка вопроса' : run.includeWeb ? 'Материалы и открытые источники' : 'Материалы карточки'}{run.changeIds.length ? ` · ${run.changeIds.length} изм.` : ''}</strong><small>{new Date(run.startedAt).toLocaleString('ru-RU')} · {run.summary || run.errorMessage || 'Выполняется'}</small></div></div>)}</div>
+        <div className="research-history-list">{researchRuns.slice(0, 20).map((run) => {
+          const runChanges = run.changeIds.map((changeId) => caseChanges.find((change) => change.id === changeId)).filter((change): change is CaseChange => Boolean(change && change.kind !== 'research_completed' && change.kind !== 'research_failed'));
+          const addedEntities = run.addedEntityIds.map((entityId) => allEntities.find((candidate) => candidate.id === entityId)).filter((candidate): candidate is InvestigationEntity => Boolean(candidate));
+          const addedRelations = run.addedRelationIds.map((relationId) => allRelations.find((candidate) => candidate.id === relationId)).filter((candidate): candidate is InvestigationRelation => Boolean(candidate));
+          const modeLabel = run.mode === 'relationships' ? 'Поиск связи' : run.mode === 'question_resolution' ? 'Проверка вопроса' : run.includeWeb ? 'Материалы и открытые источники' : 'Материалы карточки';
+          const resultText = run.errorMessage || run.summary || (run.status === 'running' ? 'Исследование выполняется.' : 'Новых данных не получено.');
+          return <details className={`research-history-entry is-${run.status}`} key={run.id}>
+            <summary className="research-history-row">
+              <span>{run.status === 'completed' ? '✓' : run.status === 'error' ? '!' : '…'}</span>
+              <div><strong>{modeLabel}</strong><small>{new Date(run.startedAt).toLocaleString('ru-RU')}</small></div>
+              <em className={run.status === 'error' ? 'is-error' : run.status === 'running' ? 'is-running' : runChanges.length === 0 ? 'is-empty' : 'is-new'}>{run.status === 'error' ? 'Ошибка' : run.status === 'running' ? 'В работе' : runChanges.length === 0 ? 'Без новых данных' : `${runChanges.length} изм.`}</em>
+            </summary>
+            <div className="research-history-details">
+              <div><span>Запрос</span><p>{run.question || 'Запрос не сохранён'}</p></div>
+              <div><span>Результат</span><p>{resultText}</p></div>
+              <dl><div><dt>Начато</dt><dd>{new Date(run.startedAt).toLocaleString('ru-RU')}</dd></div><div><dt>Завершено</dt><dd>{run.finishedAt ? new Date(run.finishedAt).toLocaleString('ru-RU') : 'Ещё выполняется'}</dd></div></dl>
+              {addedEntities.length > 0 && <section><strong>Созданные карточки</strong><div className="research-created-list">{addedEntities.map((added) => <button type="button" key={added.id} onClick={() => onOpenEntity(added.id)}><span>{added.title}</span><small>{added.type}</small></button>)}</div></section>}
+              {addedRelations.length > 0 && <section><strong>Созданные связи</strong><ul>{addedRelations.map((added) => <li key={added.id}>{allEntities.find((candidate) => candidate.id === added.sourceId)?.title ?? added.sourceId} <b>— {added.label} →</b> {allEntities.find((candidate) => candidate.id === added.targetId)?.title ?? added.targetId}</li>)}</ul></section>}
+              {runChanges.length > 0 && <section><strong>Что изменилось</strong><ul>{runChanges.slice(0, 12).map((change) => <li key={change.id}>{change.summary}</li>)}</ul></section>}
+              {run.status === 'completed' && runChanges.length === 0 && addedEntities.length === 0 && addedRelations.length === 0 && <p className="research-empty-result">Новые карточки и связи не созданы.</p>}
+            </div>
+          </details>;
+        })}</div>
       </details>}
 
       {research && <section className="research-box"><div className={`inspector-research-state is-${research.status}`}><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Идёт поиск связи' : 'Идёт поиск информации') : research.status === 'completed' ? 'Исследование завершено' : 'Ошибка исследования'}</strong><span>{research.source === 'file' && research.fileName ? `${research.fileName} · ${research.message}` : research.message}</span>{research.result && <p>{research.result.summary}</p>}</div></section>}

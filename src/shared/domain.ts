@@ -202,7 +202,7 @@ export interface ResearchRun {
   errorMessage?: string;
 }
 
-export const caseChangeKinds = ['entity_added', 'entity_updated', 'question_updated', 'relation_added', 'relation_updated', 'source_added', 'source_rechecked', 'source_updated'] as const;
+export const caseChangeKinds = ['entity_added', 'entity_updated', 'question_updated', 'relation_added', 'relation_updated', 'source_added', 'source_rechecked', 'source_updated', 'research_completed', 'research_failed'] as const;
 export type CaseChangeKind = (typeof caseChangeKinds)[number];
 export type CaseChangeTargetType = 'entity' | 'relation' | 'source';
 

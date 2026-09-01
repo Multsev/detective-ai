@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCaseChanges, getEntityCaseChanges, getUnreadCaseChanges, markCaseChangesRead } from '../src/shared/caseChanges.js';
+import { buildCaseChanges, getEntityCaseChanges, getUnreadCaseChanges, markCaseChangesRead, recordResearchRunOutcome } from '../src/shared/caseChanges.js';
 import { normalizeResearchMemory } from '../src/shared/researchMemory.js';
 import { getSourceFreshness, getSourcesDueForRecheck, refreshSourceReference } from '../src/shared/sourceFreshness.js';
 import { createSeedCase } from '../src/shared/seed.js';
@@ -58,6 +58,36 @@ describe('case change journal', () => {
     expect(outcome.hasNewInformation).toBe(false);
     expect(outcome.investigationCase.sources).toHaveLength(investigationCase.sources.length);
     expect(outcome.changes).toContainEqual(expect.objectContaining({ kind: 'source_rechecked', researchRunId: 'run-recheck' }));
+  });
+
+  it('records a visible empty research result with the original question', () => {
+    const investigationCase = createSeedCase();
+    const entityId = investigationCase.entities[0].id;
+    const run = {
+      id: 'run-empty', mode: 'information' as const, entityIds: [entityId], question: 'Что нового известно об объекте?', includeWeb: true,
+      status: 'completed' as const, startedAt: '2026-09-01T12:00:00.000Z', finishedAt: '2026-09-01T12:01:00.000Z', inputMaterials: [], checkedUrls: [], attemptedQueries: [], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: 'Новых сведений не найдено.',
+    };
+    const recorded = recordResearchRunOutcome({ ...investigationCase, researchRuns: [run] }, run.id, 'completed', run.summary, run.finishedAt);
+    const change = recorded.changes?.find((candidate) => candidate.kind === 'research_completed');
+
+    expect(change).toMatchObject({ researchRunId: run.id, entityIds: [entityId], summary: run.summary });
+    expect(change?.readAt).toBeUndefined();
+    expect(change?.fields).toContainEqual({ field: 'Запрос', after: run.question });
+    expect(recorded.researchRuns?.[0].changeIds).toEqual([change?.id]);
+    expect(getUnreadCaseChanges(recorded)).toContainEqual(change);
+  });
+
+  it('records research failure once even when completion handling is retried', () => {
+    const investigationCase = createSeedCase();
+    const run = {
+      id: 'run-error', mode: 'relationships' as const, entityIds: investigationCase.entities.slice(0, 2).map((entity) => entity.id), question: 'Есть ли связь?', includeWeb: true,
+      status: 'error' as const, startedAt: '2026-09-01T12:00:00.000Z', finishedAt: '2026-09-01T12:01:00.000Z', inputMaterials: [], checkedUrls: [], attemptedQueries: [], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '', errorMessage: 'Источник недоступен',
+    };
+    const once = recordResearchRunOutcome({ ...investigationCase, researchRuns: [run] }, run.id, 'error', run.errorMessage, run.finishedAt);
+    const twice = recordResearchRunOutcome(once, run.id, 'error', run.errorMessage, run.finishedAt);
+
+    expect(twice.changes?.filter((change) => change.kind === 'research_failed')).toHaveLength(1);
+    expect(twice.researchRuns?.[0].changeIds).toHaveLength(1);
   });
 });
 
