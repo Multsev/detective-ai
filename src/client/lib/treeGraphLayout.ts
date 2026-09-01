@@ -8,6 +8,8 @@ const ORIGIN_Y = 80;
 const CARD_WIDTH = 205;
 const CARD_HEIGHT = 145;
 const TARGET_ASPECT_RATIO = 1.35;
+const RADIAL_RING_GAP = 300;
+const RADIAL_CARD_GAP = 54;
 
 interface TreeNode {
   entityId: string;
@@ -21,10 +23,7 @@ interface ComponentLayout {
   height: number;
 }
 
-/**
- * Places every connected component as a left-to-right tree while preserving
- * all original relations, including cross-links and cycles.
- */
+/** Uses a radial focus layout when a card is selected and a packed tree layout otherwise. */
 export function arrangeInvestigationGraph(
   investigationCase: InvestigationCase,
   selectedEntityId?: string,
@@ -48,17 +47,16 @@ export function arrangeInvestigationGraph(
   const compareRoots = (leftId: string, rightId: string) =>
     (adjacency.get(rightId)?.size ?? 0) - (adjacency.get(leftId)?.size ?? 0) || compareEntityIds(leftId, rightId);
 
+  if (selectedEntityId && entitiesById.has(selectedEntityId)) {
+    return applySelectedRadialLayout(investigationCase, selectedEntityId, adjacency, entitiesById, compareEntityIds);
+  }
+
   const unvisited = new Set(entitiesById.keys());
-  const roots: string[] = [];
-  if (selectedEntityId && unvisited.has(selectedEntityId)) roots.push(selectedEntityId);
 
   const components: ComponentLayout[] = [];
 
   while (unvisited.size > 0) {
-    const requestedRoot = roots.shift();
-    const rootId = requestedRoot && unvisited.has(requestedRoot)
-      ? requestedRoot
-      : [...unvisited].sort(compareRoots)[0];
+    const rootId = [...unvisited].sort(compareRoots)[0];
     const root = buildSpanningTree(rootId, adjacency, unvisited, compareEntityIds);
     components.push(layoutComponent(root));
   }
@@ -71,6 +69,80 @@ export function arrangeInvestigationGraph(
       ...entity,
       position: positioned.get(entity.id) ?? entity.position,
     })),
+  };
+}
+
+function applySelectedRadialLayout(
+  investigationCase: InvestigationCase,
+  selectedEntityId: string,
+  adjacency: ReadonlyMap<string, ReadonlySet<string>>,
+  entitiesById: ReadonlyMap<string, InvestigationEntity>,
+  compareEntityIds: (leftId: string, rightId: string) => number,
+): InvestigationCase {
+  const unvisited = new Set(entitiesById.keys());
+  const radialTree = buildSpanningTree(selectedEntityId, adjacency, unvisited, compareEntityIds);
+  const radial = layoutRadialComponent(radialTree);
+  const disconnectedComponents: ComponentLayout[] = [];
+
+  while (unvisited.size > 0) {
+    const rootId = [...unvisited].sort((leftId, rightId) =>
+      (adjacency.get(rightId)?.size ?? 0) - (adjacency.get(leftId)?.size ?? 0) || compareEntityIds(leftId, rightId))[0];
+    disconnectedComponents.push(layoutComponent(buildSpanningTree(rootId, adjacency, unvisited, compareEntityIds)));
+  }
+
+  const positions = new Map<string, InvestigationEntity['position']>();
+  for (const [entityId, position] of radial.positions) {
+    positions.set(entityId, { x: ORIGIN_X + position.x, y: ORIGIN_Y + position.y });
+  }
+  const disconnected = packComponents(disconnectedComponents);
+  for (const [entityId, position] of disconnected) {
+    positions.set(entityId, { x: position.x + radial.width + COMPONENT_GAP, y: position.y });
+  }
+
+  return {
+    ...investigationCase,
+    entities: investigationCase.entities.map((entity) => ({
+      ...entity,
+      position: positions.get(entity.id) ?? entity.position,
+    })),
+  };
+}
+
+function layoutRadialComponent(root: TreeNode): ComponentLayout {
+  const levels: TreeNode[][] = [];
+  const queue = [root];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    (levels[current.depth] ??= []).push(current);
+    queue.push(...current.children);
+  }
+
+  const radii: number[] = [0];
+  for (let depth = 1; depth < levels.length; depth += 1) {
+    const minimumForCardSpacing = levels[depth].length * (CARD_WIDTH + RADIAL_CARD_GAP) / (2 * Math.PI);
+    radii.push(Math.max(depth * RADIAL_RING_GAP, minimumForCardSpacing, radii[depth - 1] + RADIAL_RING_GAP));
+  }
+  const maximumRadius = Math.max(0, ...radii);
+  const centerX = maximumRadius + CARD_WIDTH / 2;
+  const centerY = maximumRadius + CARD_HEIGHT / 2;
+  const positions = new Map<string, InvestigationEntity['position']>();
+  positions.set(root.entityId, { x: centerX - CARD_WIDTH / 2, y: centerY - CARD_HEIGHT / 2 });
+
+  levels.slice(1).forEach((level, levelIndex) => {
+    const radius = radii[levelIndex + 1];
+    level.forEach((node, index) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * index) / level.length;
+      positions.set(node.entityId, {
+        x: centerX + Math.cos(angle) * radius - CARD_WIDTH / 2,
+        y: centerY + Math.sin(angle) * radius - CARD_HEIGHT / 2,
+      });
+    });
+  });
+
+  return {
+    positions,
+    width: maximumRadius * 2 + CARD_WIDTH,
+    height: maximumRadius * 2 + CARD_HEIGHT,
   };
 }
 

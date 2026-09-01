@@ -330,7 +330,7 @@ export function App() {
     commit((current) => arrangeInvestigationGraph(current, selectedEntityId));
     setFitGraphRequestKey((current) => (current ?? 0) + 1);
     setMessage(selectedEntity
-      ? `Граф расставлен деревом от карточки «${selectedEntity.title}».`
+      ? `Связанные объекты расставлены вокруг карточки «${selectedEntity.title}».`
       : 'Объекты расставлены как связные деревья.');
   }
 
@@ -419,7 +419,7 @@ export function App() {
               else { setPage('settings'); setMessage(googleStatus.configured ? 'Сначала подключите аккаунт Google.' : 'Сначала настройте OAuth-клиент Google.'); }
             }}><ContactRound size={16} />Контакты</button>
             <button className="secondary-button" onClick={() => setShowAddDialog(true)}><Plus size={16} />Карточка</button>
-            <Button className="arrange-button" icon="network" disabled={researching || investigationCase.entities.length === 0} onClick={arrangeObjects}>Расставить</Button>
+            <Button className="arrange-button" icon="network" title={selectedEntity ? `Расставить связи вокруг «${selectedEntity.title}»` : 'Расставить весь граф'} disabled={researching || investigationCase.entities.length === 0} onClick={arrangeObjects}>Расставить</Button>
             <button className="primary-button topbar-research" disabled={!selectedEntity || !health.codex.ready || Boolean(selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running')} onClick={() => research('')}><ShieldCheck size={16} />{selectedEntity && researchByEntityId[selectedEntity.id]?.status === 'running' ? 'В работе…' : 'Найти связи'}</button>
             <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
           </div>

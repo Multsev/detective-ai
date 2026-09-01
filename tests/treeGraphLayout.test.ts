@@ -14,16 +14,56 @@ function investigationCase(entities: InvestigationEntity[], relations: Investiga
   return { id: 'case', caseNumber: 1, subject: 'Тест', title: 'Дело', subtitle: '', entities, relations, sources: [], updatedAt: '' };
 }
 
-describe('tree graph layout', () => {
-  it('uses the selected entity as the root and places descendants to the right', () => {
+describe('context-aware graph layout', () => {
+  it('places graph-distance levels on concentric rings around the selected entity', () => {
     const arranged = arrangeInvestigationGraph(
       investigationCase([entity('a'), entity('b'), entity('c')], [relation('a', 'b'), relation('b', 'c')]),
       'c',
     );
     const positions = new Map(arranged.entities.map((item) => [item.id, item.position]));
 
-    expect(positions.get('c')?.x).toBeLessThan(positions.get('b')?.x ?? 0);
-    expect(positions.get('b')?.x).toBeLessThan(positions.get('a')?.x ?? 0);
+    const center = positions.get('c')!;
+    const firstRingDistance = distance(center, positions.get('b')!);
+    const secondRingDistance = distance(center, positions.get('a')!);
+    expect(firstRingDistance).toBeCloseTo(300, 4);
+    expect(secondRingDistance).toBeCloseTo(600, 4);
+  });
+
+  it('spreads direct neighbors evenly around the selected card like rays', () => {
+    const arranged = arrangeInvestigationGraph(
+      investigationCase(
+        [entity('center'), entity('north'), entity('east'), entity('south'), entity('west')],
+        [relation('center', 'north'), relation('center', 'east'), relation('center', 'south'), relation('center', 'west')],
+      ),
+      'center',
+    );
+    const positions = new Map(arranged.entities.map((item) => [item.id, item.position]));
+    const center = positions.get('center')!;
+    const neighborOffsets = ['north', 'east', 'south', 'west'].map((id) => {
+      const position = positions.get(id)!;
+      return { x: Math.round(position.x - center.x), y: Math.round(position.y - center.y) };
+    });
+
+    expect(neighborOffsets).toEqual(expect.arrayContaining([
+      { x: 0, y: -300 }, { x: 300, y: 0 }, { x: 0, y: 300 }, { x: -300, y: 0 },
+    ]));
+  });
+
+  it('keeps outer graph-distance rings beyond a crowded inner ring', () => {
+    const directNeighbors = Array.from({ length: 24 }, (_, index) => `neighbor-${index}`);
+    const arranged = arrangeInvestigationGraph(
+      investigationCase(
+        [entity('center'), ...directNeighbors.map((id) => entity(id)), entity('outer')],
+        [...directNeighbors.map((id) => relation('center', id)), relation(directNeighbors[0], 'outer')],
+      ),
+      'center',
+    );
+    const positions = new Map(arranged.entities.map((item) => [item.id, item.position]));
+    const center = positions.get('center')!;
+    const innerRadius = distance(center, positions.get(directNeighbors[0])!);
+    const outerRadius = distance(center, positions.get('outer')!);
+
+    expect(outerRadius).toBeGreaterThanOrEqual(innerRadius + 300 - 0.001);
   });
 
   it('lays out cycles once while preserving every relation', () => {
@@ -50,4 +90,20 @@ describe('tree graph layout', () => {
     expect(arranged.entities.find((item) => item.id === 'a')?.summary).toBe('Не менять');
     expect(arranged.entities.find((item) => item.id === 'a')?.facts).toEqual(original.entities[0].facts);
   });
+
+  it('keeps disconnected components outside the selected radial component', () => {
+    const arranged = arrangeInvestigationGraph(
+      investigationCase([entity('center'), entity('linked'), entity('detached-a'), entity('detached-b')], [relation('center', 'linked'), relation('detached-a', 'detached-b')]),
+      'center',
+    );
+    const positions = new Map(arranged.entities.map((item) => [item.id, item.position]));
+    const radialRight = Math.max(positions.get('center')!.x, positions.get('linked')!.x) + 205;
+
+    expect(positions.get('detached-a')!.x).toBeGreaterThan(radialRight);
+    expect(positions.get('detached-b')!.x).toBeGreaterThan(radialRight);
+  });
 });
+
+function distance(first: InvestigationEntity['position'], second: InvestigationEntity['position']): number {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
