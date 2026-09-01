@@ -732,7 +732,7 @@ export function App() {
           <div className="document-title" title={investigationCase.title}>{investigationCase.title}{saveState === 'dirty' && <span aria-label="Есть несохранённые изменения">*</span>}</div>
           <div className="topbar__actions">
             <span className={`save-state save-state--${saveState}`} title={saveState === 'error' ? 'Ошибка сохранения' : saveState === 'dirty' ? 'Есть несохранённые изменения' : 'Дело сохранено'}>{saveState === 'saving' ? 'Сохраняем…' : saveState === 'error' ? 'Ошибка' : saveState === 'dirty' ? 'Изменено' : ''}</span>
-            <ResearchQueueControl research={researchByEntityId} entities={investigationCase.entities} />
+            <ResearchQueueControl codex={health.codex} research={researchByEntityId} entities={investigationCase.entities} />
             <IconButton icon="search" label="Найти на доске" aria-expanded={searchVisible} onClick={() => setSearchVisible((current) => !current)} />
             <IconButton icon="settings" label="Настройки" onClick={() => setPage('settings')} />
           </div>
