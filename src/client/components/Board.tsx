@@ -14,7 +14,7 @@ import {
   type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { EntityResearchState, EntityType, EvidenceStatus, InvestigationCase, InvestigationRelation } from '../../shared/domain';
+import type { EntityResearchState, EntityType, EvidenceStatus, InvestigationCase, InvestigationRelation, QuestionStatus } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 import { getResearchSubjectEntityId } from '../../shared/caseSubject';
 import { isEntityVisible } from '../lib/graph';
@@ -32,6 +32,7 @@ interface BoardProps {
   activeEntityId?: string;
   visibleTypes: ReadonlySet<EntityType>;
   visibleEvidenceStatuses: ReadonlySet<EvidenceStatus>;
+  visibleQuestionStatuses: ReadonlySet<QuestionStatus>;
   onlySubjectNetwork: boolean;
   search: string;
   researchByEntityId: Readonly<Record<string, EntityResearchState>>;
@@ -54,7 +55,7 @@ interface BoardProps {
   onSelectRelation: (relation: InvestigationRelation) => void;
 }
 
-export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, onlySubjectNetwork, search, researchByEntityId, entityMotionById, removingEntityIds, autoFitResearch, motionLevel, researching, revealEntityRequest, fitGraphRequestKey, layoutAnimationKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
+export function Board({ investigationCase, selectedEntityIds, activeEntityId, visibleTypes, visibleEvidenceStatuses, visibleQuestionStatuses, onlySubjectNetwork, search, researchByEntityId, entityMotionById, removingEntityIds, autoFitResearch, motionLevel, researching, revealEntityRequest, fitGraphRequestKey, layoutAnimationKey, onSelectEntity, onClearSelection, onOpenEntity, onOpenEntityMenu, onOpenPaneMenu, onOpenAddEntity, onMoveEntity, onConnectEntities, onSelectRelation }: BoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const researchSubjectEntityId = getResearchSubjectEntityId(investigationCase);
   const [viewportZoom, setViewportZoom] = useState(1);
@@ -109,8 +110,8 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
     position: entity.position,
     data: { entity, research: researchByEntityId[entity.id], isResearchSubject: entity.id === researchSubjectEntityId, isActiveSelection: entity.id === activeEntityId, provenance: provenanceByEntityId.get(entity.id)!, reducedDetail, entering: enteringEntityIds.has(entity.id), removing: removingEntityIds.has(entity.id), motionState: entityMotionById[entity.id] },
     selected: selectedEntityIds.has(entity.id),
-    hidden: !isEntityVisible(entity, visibleTypes, search) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)),
-  })), [activeEntityId, enteringEntityIds, entityMotionById, investigationCase.entities, provenanceByEntityId, reducedDetail, removingEntityIds, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, visibleTypes]);
+    hidden: !isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)),
+  })), [activeEntityId, enteringEntityIds, entityMotionById, investigationCase.entities, provenanceByEntityId, reducedDetail, removingEntityIds, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, visibleQuestionStatuses, visibleTypes]);
 
   const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
     const visual = evidenceStyles[relation.status];

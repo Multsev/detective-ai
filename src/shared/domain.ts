@@ -117,6 +117,27 @@ export interface InvestigationEntity {
   sourceIds?: string[];
   createdBy?: 'user' | 'ai';
   occurredAt?: string;
+  question?: QuestionDetails;
+}
+
+export const questionStatuses = ['open', 'researching', 'partial', 'answered', 'blocked', 'contradicted', 'dismissed'] as const;
+export type QuestionStatus = (typeof questionStatuses)[number];
+export type QuestionPriority = 'high' | 'medium' | 'low';
+
+export interface QuestionDetails {
+  status: QuestionStatus;
+  priority: QuestionPriority;
+  why: string;
+  successCriteria: string;
+  aboutEntityIds: string[];
+  originResearchRunId?: string;
+  answer?: string;
+  answerSourceIds: string[];
+  researchRunIds: string[];
+  resolvedByEntityIds: string[];
+  resolvedByRelationIds: string[];
+  createdAt: string;
+  resolvedAt?: string;
 }
 
 export interface InvestigationRelation {
@@ -232,7 +253,18 @@ export interface ResearchClaim {
 export interface ResearchQuestion {
   text: string;
   why: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: QuestionPriority;
+  aboutEntityIds: string[];
+  successCriteria: string;
+}
+
+export interface QuestionResolutionProposal {
+  questionId: string;
+  outcome: 'answered' | 'partial' | 'unresolved' | 'contradicted';
+  answer: string;
+  confidence: number;
+  sourceIds: string[];
+  resolvedClaimIds: string[];
 }
 
 export interface ResearchResult {
@@ -244,6 +276,7 @@ export interface ResearchResult {
   questions: ResearchQuestion[];
   sources: SourceReference[];
   warnings: string[];
+  questionResolution?: QuestionResolutionProposal | null;
 }
 
 export interface CodexStatus {
@@ -298,7 +331,7 @@ export interface McpSettingsView extends McpSettings {
 }
 
 export type EntityResearchStatus = 'running' | 'completed' | 'error';
-export type ResearchMode = 'information' | 'relationships';
+export type ResearchMode = 'information' | 'relationships' | 'question_resolution';
 
 export interface EntityResearchState {
   entityId: string;

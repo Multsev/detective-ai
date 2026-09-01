@@ -101,4 +101,12 @@ export const api = {
     });
     await consumeResearchStream(response, onEvent);
   },
+  async researchQuestionStream(caseId: string, questionId: string, instruction: string, onEvent: (event: ResearchStreamEvent) => void) {
+    const response = await fetch('/api/research/questions/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId, questionId, instruction }),
+    });
+    await consumeResearchStream(response, onEvent);
+  },
 };

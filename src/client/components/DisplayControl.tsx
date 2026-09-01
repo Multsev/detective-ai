@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { Button, Checkbox, IconButton, Panel } from '../ui';
-import { entityTypes, evidenceStatuses, type EntityType, type EvidenceStatus, type InvestigationCase } from '../../shared/domain';
+import { entityTypes, evidenceStatuses, questionStatuses, type EntityType, type EvidenceStatus, type InvestigationCase, type QuestionStatus } from '../../shared/domain';
 import { evidenceStyles } from '../../shared/evidenceStyle';
 
 const layers: Array<{ type: EntityType; label: string }> = [
@@ -23,18 +23,22 @@ interface DisplayControlProps {
   investigationCase: InvestigationCase;
   visibleTypes: ReadonlySet<EntityType>;
   visibleEvidenceStatuses: ReadonlySet<EvidenceStatus>;
+  visibleQuestionStatuses: ReadonlySet<QuestionStatus>;
   onlySubjectNetwork: boolean;
   openRequest?: DisplayOpenRequest;
   onToggleType: (type: EntityType) => void;
   onToggleEvidence: (status: EvidenceStatus) => void;
+  onToggleQuestionStatus: (status: QuestionStatus) => void;
   onOnlySubjectNetworkChange: (enabled: boolean) => void;
   onReset: () => void;
 }
 
-export function DisplayControl({ investigationCase, visibleTypes, visibleEvidenceStatuses, onlySubjectNetwork, openRequest, onToggleType, onToggleEvidence, onOnlySubjectNetworkChange, onReset }: DisplayControlProps) {
+const questionStatusLabels: Record<QuestionStatus, string> = { open: 'Открытые', researching: 'Исследуются', partial: 'Частичный ответ', answered: 'Решённые', blocked: 'Без ответа', contradicted: 'Противоречия', dismissed: 'Закрытые' };
+
+export function DisplayControl({ investigationCase, visibleTypes, visibleEvidenceStatuses, visibleQuestionStatuses, onlySubjectNetwork, openRequest, onToggleType, onToggleEvidence, onToggleQuestionStatus, onOnlySubjectNetworkChange, onReset }: DisplayControlProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'filters' | 'legend'>('filters');
-  const activeFilterCount = entityTypes.length - visibleTypes.size + evidenceStatuses.length - visibleEvidenceStatuses.size + Number(onlySubjectNetwork);
+  const activeFilterCount = entityTypes.length - visibleTypes.size + evidenceStatuses.length - visibleEvidenceStatuses.size + questionStatuses.length - visibleQuestionStatuses.size + Number(onlySubjectNetwork);
   useEffect(() => {
     if (!open) return;
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
@@ -51,6 +55,7 @@ export function DisplayControl({ investigationCase, visibleTypes, visibleEvidenc
       <div className="display-control__tabs"><button className={tab === 'filters' ? 'is-active' : ''} onClick={() => setTab('filters')}>Фильтры</button><button className={tab === 'legend' ? 'is-active' : ''} onClick={() => setTab('legend')}>Легенда</button></div>
       {tab === 'filters' ? <>
         <div className="display-filter-section"><strong>Типы объектов</strong>{layers.map(({ type, label }) => <Checkbox key={type} checked={visibleTypes.has(type)} onChange={() => onToggleType(type)} label={`${label} · ${investigationCase.entities.filter((entity) => entity.type === type).length}`} />)}</div>
+        {visibleTypes.has('question') && <div className="display-filter-section"><strong>Статусы вопросов</strong>{questionStatuses.map((status) => <Checkbox key={status} checked={visibleQuestionStatuses.has(status)} onChange={() => onToggleQuestionStatus(status)} label={`${questionStatusLabels[status]} · ${investigationCase.entities.filter((entity) => entity.type === 'question' && (entity.question?.status ?? 'open') === status).length}`} />)}</div>}
         <div className="display-filter-section"><strong>Достоверность связей</strong>{evidenceStatuses.map((status) => <Checkbox key={status} checked={visibleEvidenceStatuses.has(status)} onChange={() => onToggleEvidence(status)} label={evidenceStyles[status].label} />)}</div>
         <div className="display-filter-section"><Checkbox checked={onlySubjectNetwork} onChange={(event) => onOnlySubjectNetworkChange(event.target.checked)} label="Только сеть исследуемого объекта" /></div>
         <Button onClick={onReset}>Сбросить фильтры</Button>

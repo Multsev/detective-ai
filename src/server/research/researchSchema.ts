@@ -61,18 +61,28 @@ export const researchResultSchema = z.object({
     occurredAt: z.string(),
   })),
   questions: z.array(z.object({
-    text: z.string(),
+    text: z.string().min(1),
     why: z.string(),
     priority: z.enum(['high', 'medium', 'low']),
+    aboutEntityIds: z.array(z.string().min(1)).default([]),
+    successCriteria: z.string().default('Найти проверяемый ответ и подтвердить его источником.'),
   })),
   sources: z.array(sourceSchema),
   warnings: z.array(z.string()),
+  questionResolution: z.object({
+    questionId: z.string().min(1),
+    outcome: z.enum(['answered', 'partial', 'unresolved', 'contradicted']),
+    answer: z.string(),
+    confidence: z.number().min(0).max(1),
+    sourceIds: z.array(z.string()),
+    resolvedClaimIds: z.array(z.string()),
+  }).nullable().default(null),
 });
 
 export const researchJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['summary', 'identityAssessment', 'candidateEntities', 'entityUpdates', 'claims', 'questions', 'sources', 'warnings'],
+  required: ['summary', 'identityAssessment', 'candidateEntities', 'entityUpdates', 'claims', 'questions', 'sources', 'warnings', 'questionResolution'],
   properties: {
     summary: { type: 'string' },
     identityAssessment: { type: 'string' },
@@ -129,11 +139,13 @@ export const researchJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['text', 'why', 'priority'],
+        required: ['text', 'why', 'priority', 'aboutEntityIds', 'successCriteria'],
         properties: {
           text: { type: 'string' },
           why: { type: 'string' },
           priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+          aboutEntityIds: { type: 'array', minItems: 1, items: { type: 'string' } },
+          successCriteria: { type: 'string' },
         },
       },
     },
@@ -154,5 +166,23 @@ export const researchJsonSchema = {
       },
     },
     warnings: { type: 'array', items: { type: 'string' } },
+    questionResolution: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['questionId', 'outcome', 'answer', 'confidence', 'sourceIds', 'resolvedClaimIds'],
+          properties: {
+            questionId: { type: 'string' },
+            outcome: { type: 'string', enum: ['answered', 'partial', 'unresolved', 'contradicted'] },
+            answer: { type: 'string' },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+            sourceIds: { type: 'array', items: { type: 'string' } },
+            resolvedClaimIds: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
   },
 } as const;

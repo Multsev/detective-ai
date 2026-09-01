@@ -110,6 +110,11 @@ export function Inspector({ entity, relation, allEntities, sources, research, pr
       <h2>{entity.title}</h2>
       <p className="inspector__subtitle">{entity.subtitle}</p>
       <p className="body-copy">{entity.summary}</p>
+      {entity.type === 'question' && entity.question && <section className={`inspector-section question-details is-${entity.question.status}`}>
+        <div className="section-heading"><h3>Состояние вопроса</h3><span>{({ open: 'Открыт', researching: 'Исследуется', partial: 'Частично', answered: 'Решён', blocked: 'Нет ответа', contradicted: 'Противоречие', dismissed: 'Закрыт' } as const)[entity.question.status]}</span></div>
+        <dl><div><dt>Критерий ответа</dt><dd>{entity.question.successCriteria}</dd></div><div><dt>Попыток</dt><dd>{entity.question.researchRunIds.length}</dd></div></dl>
+        {entity.question.answer && <div className="question-details__answer"><strong>Ответ</strong><p>{entity.question.answer}</p></div>}
+      </section>}
       {entityDate && <div className="inspector-object-date"><CalendarDays size={12} /><span>Дата объекта</span><time dateTime={entity.occurredAt}>{entityDate}</time></div>}
       {provenance && <div className="inspector-entity-sources" aria-label="Источники карточки">
         <strong>Источник</strong>

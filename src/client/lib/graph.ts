@@ -1,6 +1,7 @@
-import type { EntityAttribute, EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, ResearchEntityAttribute, ResearchResult } from '../../shared/domain';
+import type { EntityAttribute, EntityType, InvestigationCase, InvestigationEntity, InvestigationRelation, QuestionDetails, ResearchEntityAttribute, ResearchResult } from '../../shared/domain';
 import { normalizeCaseSubject } from '../../shared/caseSubject';
 import { attributeIdentityKey } from '../../shared/entityAttributeCatalog';
+import { getQuestionDetails, normalizeCaseQuestions } from '../../shared/questions';
 
 export interface ResearchMergeOutcome {
   investigationCase: InvestigationCase;
@@ -20,6 +21,114 @@ export interface InteractiveRelationResult {
   relation?: InvestigationRelation;
   created: boolean;
   message?: string;
+}
+
+export interface QuestionResolutionMergeOutcome extends ResearchMergeOutcome {
+  question: QuestionDetails;
+}
+
+export function mergeQuestionResolutionResult(
+  investigationCase: InvestigationCase,
+  questionEntity: InvestigationEntity,
+  result: ResearchResult,
+  researchRunId: string,
+): QuestionResolutionMergeOutcome {
+  const base = mergeResearchResultWithOutcome(investigationCase, questionEntity, result);
+  const proposal = result.questionResolution;
+  const current = getQuestionDetails(questionEntity, investigationCase);
+  if (!current) throw new Error('Карточка вопроса не найдена.');
+
+  const sourceIds = [...new Set((proposal?.sourceIds ?? []).flatMap((id) => {
+    if (base.investigationCase.sources.some((source) => source.id === id)) return [id];
+    const proposed = result.sources.find((source) => source.id === id);
+    const canonical = proposed && base.investigationCase.sources.find((source) => sourceIdentityKey(source.url) === sourceIdentityKey(proposed.url));
+    return canonical ? [canonical.id] : [];
+  }))];
+  const proposalClaims = new Map(result.claims.map((claim) => [claim.id, claim]));
+  const resolvedRelations = (proposal?.resolvedClaimIds ?? []).flatMap((claimId) => {
+    const direct = base.investigationCase.relations.find((relation) => relation.id === claimId);
+    if (direct) return [direct];
+    const claim = proposalClaims.get(claimId);
+    if (!claim) return [];
+    const match = base.investigationCase.relations.find((relation) =>
+      relation.sourceId === claim.subjectId
+      && relation.targetId === claim.objectId
+      && normalizeIdentityText(relation.label) === normalizeIdentityText(claim.predicate)
+      && (relation.occurredAt ?? '') === (claim.occurredAt ?? ''));
+    return match ? [match] : [];
+  });
+  const answer = proposal?.answer.trim() ?? '';
+  const hasEvidence = sourceIds.length > 0 && resolvedRelations.length > 0;
+  const status: QuestionDetails['status'] = proposal?.outcome === 'contradicted' && sourceIds.length
+    ? 'contradicted'
+    : proposal?.outcome === 'answered' && answer && hasEvidence
+      ? 'answered'
+      : answer && sourceIds.length
+        ? 'partial'
+        : 'blocked';
+  const now = new Date().toISOString();
+  const question: QuestionDetails = {
+    ...current,
+    status,
+    answer: answer || current.answer,
+    answerSourceIds: [...new Set([...current.answerSourceIds, ...sourceIds])],
+    researchRunIds: [...new Set([...current.researchRunIds, researchRunId])],
+    resolvedByRelationIds: [...new Set([...current.resolvedByRelationIds, ...resolvedRelations.map((relation) => relation.id)])],
+    resolvedByEntityIds: [...new Set([...current.resolvedByEntityIds, ...resolvedRelations.flatMap((relation) => [relation.sourceId, relation.targetId]).filter((id) => id !== questionEntity.id)])],
+    resolvedAt: status === 'answered' ? now : undefined,
+  };
+  return {
+    ...base,
+    investigationCase: {
+      ...base.investigationCase,
+      entities: base.investigationCase.entities.map((entity) => entity.id === questionEntity.id ? { ...entity, question } : entity),
+    },
+    question,
+  };
+}
+
+export function answerQuestionManually(
+  investigationCase: InvestigationCase,
+  questionId: string,
+  answer: string,
+  sourceId: string,
+  targetId: string,
+  label: string,
+): InvestigationCase {
+  const questionEntity = investigationCase.entities.find((entity) => entity.id === questionId);
+  const current = questionEntity ? getQuestionDetails(questionEntity, investigationCase) : undefined;
+  if (!questionEntity || !current) throw new Error('Карточка вопроса не найдена.');
+  if (!answer.trim() || !label.trim()) throw new Error('Укажите ответ и смысл связи.');
+  if (sourceId === targetId || !investigationCase.entities.some((entity) => entity.id === sourceId) || !investigationCase.entities.some((entity) => entity.id === targetId)) {
+    throw new Error('Выберите две разные существующие карточки.');
+  }
+  const identity = relationIdentityKey(sourceId, targetId, label, '');
+  const existing = investigationCase.relations.find((relation) => relationIdentityKey(relation.sourceId, relation.targetId, relation.label, relation.occurredAt) === identity);
+  const relation: InvestigationRelation = existing ?? {
+    id: `relation-manual-${stableTextHash(`${questionId}:${sourceId}:${targetId}:${label}`)}`,
+    sourceId,
+    targetId,
+    label: label.trim(),
+    explanation: `Ручной ответ на вопрос: ${answer.trim()}`,
+    status: 'user_asserted',
+    confidence: 0.5,
+    sourceIds: [],
+    createdBy: 'user',
+  };
+  const now = new Date().toISOString();
+  const question: QuestionDetails = {
+    ...current,
+    status: 'answered',
+    answer: answer.trim(),
+    resolvedByRelationIds: [...new Set([...current.resolvedByRelationIds, relation.id])],
+    resolvedByEntityIds: [...new Set([...current.resolvedByEntityIds, sourceId, targetId])],
+    resolvedAt: now,
+  };
+  return {
+    ...investigationCase,
+    entities: investigationCase.entities.map((entity) => entity.id === questionId ? { ...entity, question } : entity),
+    relations: existing ? investigationCase.relations : [...investigationCase.relations, relation],
+  };
 }
 
 export function connectEntities(
@@ -48,8 +157,9 @@ export function connectEntities(
   return { investigationCase: { ...investigationCase, relations: [...investigationCase.relations, relation] }, relation, created: true };
 }
 
-export function isEntityVisible(entity: InvestigationEntity, visibleTypes: ReadonlySet<EntityType>, search: string): boolean {
+export function isEntityVisible(entity: InvestigationEntity, visibleTypes: ReadonlySet<EntityType>, search: string, visibleQuestionStatuses?: ReadonlySet<QuestionDetails['status']>): boolean {
   if (!visibleTypes.has(entity.type)) return false;
+  if (entity.type === 'question' && visibleQuestionStatuses && !visibleQuestionStatuses.has(entity.question?.status ?? 'open')) return false;
   if (!search) return true;
   return `${entity.title} ${entity.subtitle} ${entity.summary}`.toLowerCase().includes(search.toLowerCase());
 }
@@ -220,22 +330,19 @@ export function mergeResearchResultWithOutcome(
     ...[...relationUpdates.values()].flatMap((relation) => relation.sourceIds),
     ...[...entityAttributeUpdates.values()].flatMap((attributes) => attributes.flatMap((attribute) => attribute.sourceIds)),
     ...acceptedEntities.flatMap((entity) => (entity.attributes ?? []).flatMap((attribute) => attribute.sourceIds)),
+    ...(result.questionResolution?.sourceIds ?? []).map((sourceId) => sourceAliases.get(sourceId) ?? sourceId),
   ]);
   const acceptedSources = [...candidateSourcesById.values()].filter((source) => usedSourceIds.has(source.id));
   const currentFocus = investigationCase.entities.find((entity) => entity.id === focusEntity.id) ?? focusEntity;
+  const questionScope = (ids?: string[]) => [...new Set((ids?.length ? ids : [currentFocus.id]).map((id) => entityAliases.get(id) ?? id).filter((id) => validIds.has(id)))];
   const existingQuestions = new Set([
-    ...currentFocus.facts.filter((fact) => fact.kind === 'question').map((fact) => normalizeIdentityText(fact.text)),
-    ...candidateEntities.filter((entity) => entity.type === 'question').map((entity) => normalizeIdentityText(entity.title)),
-    ...investigationCase.relations.flatMap((relation) => {
-      if (relation.sourceId !== currentFocus.id && relation.targetId !== currentFocus.id) return [];
-      const counterpartId = relation.sourceId === currentFocus.id ? relation.targetId : relation.sourceId;
-      const counterpart = investigationCase.entities.find((entity) => entity.id === counterpartId && entity.type === 'question');
-      return counterpart ? [normalizeIdentityText(counterpart.title)] : [];
-    }),
+    ...currentFocus.facts.filter((fact) => fact.kind === 'question').map((fact) => questionIdentityKey(fact.text, [currentFocus.id])),
+    ...candidateEntities.filter((entity) => entity.type === 'question').map((entity) => questionIdentityKey(entity.title, [currentFocus.id])),
+    ...investigationCase.entities.filter((entity) => entity.type === 'question').map((entity) => questionIdentityKey(entity.title, getQuestionDetails(entity, investigationCase)?.aboutEntityIds ?? [currentFocus.id])),
   ]);
   const questionKeys = new Set<string>();
   const acceptedQuestions = result.questions.filter((question) => {
-    const key = normalizeIdentityText(question.text);
+    const key = questionIdentityKey(question.text, questionScope(question.aboutEntityIds));
     if (!key || existingQuestions.has(key) || questionKeys.has(key)) return false;
     questionKeys.add(key);
     return true;
@@ -275,20 +382,35 @@ export function mergeResearchResultWithOutcome(
       attributes: [],
       sourceIds: [],
       createdBy: 'ai',
+      question: {
+        status: 'open',
+        priority: question.priority,
+        why: question.why,
+        successCriteria: question.successCriteria || 'Найти проверяемый ответ и подтвердить его источником.',
+        aboutEntityIds: questionScope(question.aboutEntityIds),
+        answerSourceIds: [],
+        researchRunIds: [],
+        resolvedByEntityIds: [],
+        resolvedByRelationIds: [],
+        createdAt: new Date().toISOString(),
+      },
     };
   });
-  const acceptedQuestionRelations = acceptedQuestionEntities.map((entity, index): InvestigationRelation => ({
-    id: `relation-${entity.id}`,
-    sourceId: focusEntity.id,
-    targetId: entity.id,
-    label: 'требует проверки',
-    explanation: acceptedQuestions[index].why || 'Вопрос сформирован в ходе исследования.',
-    status: 'unknown',
-    confidence: 0,
-    sourceIds: [],
-    createdBy: 'ai',
-  }));
-  const mergedCase = {
+  const acceptedQuestionRelations = acceptedQuestionEntities.flatMap((entity, index): InvestigationRelation[] => {
+    const aboutIds = entity.question?.aboutEntityIds.length ? entity.question.aboutEntityIds : [focusEntity.id];
+    return aboutIds.map((aboutId) => ({
+      id: `relation-${entity.id}-${stableTextHash(aboutId)}`,
+      sourceId: aboutId,
+      targetId: entity.id,
+      label: 'требует проверки',
+      explanation: acceptedQuestions[index].why || 'Вопрос сформирован в ходе исследования.',
+      status: 'unknown',
+      confidence: 0,
+      sourceIds: [],
+      createdBy: 'ai',
+    }));
+  });
+  const mergedCase = normalizeCaseQuestions({
     ...investigationCase,
     entities: [
       ...investigationCase.entities.map((entity) => {
@@ -304,7 +426,7 @@ export function mergeResearchResultWithOutcome(
       ...acceptedQuestionRelations,
     ],
     sources: [...investigationCase.sources, ...acceptedSources],
-  };
+  });
   return {
     investigationCase: mergedCase,
     result: deduplicatedResult,
@@ -343,6 +465,10 @@ function toEntityAttribute(entityId: string, attribute: ResearchEntityAttribute)
 
 function entityIdentityKey(entity: Pick<InvestigationEntity, 'type' | 'title'>): string {
   return `${entity.type}:${normalizeIdentityText(entity.title)}`;
+}
+
+function questionIdentityKey(text: string, aboutEntityIds: readonly string[]): string {
+  return `${normalizeIdentityText(text)}::${[...new Set(aboutEntityIds)].sort().join(',')}`;
 }
 
 function relationIdentityKey(sourceId: string, targetId: string, label: string, occurredAt?: string): string {

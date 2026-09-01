@@ -24,6 +24,12 @@ const relationshipResearchRequestSchema = z.object({
   question: z.string().max(1200).default(''),
 });
 
+const questionResearchRequestSchema = z.object({
+  caseId: z.string().min(1),
+  questionId: z.string().min(1),
+  instruction: z.string().max(1200).default(''),
+});
+
 const createCaseSchema = z.object({
   subject: z.string().trim().min(1).max(160),
   entityType: z.enum(['person', 'company']),
@@ -274,6 +280,48 @@ export function createApp(options: { store: CaseStore; materialStore?: CaseMater
       response.end();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка поиска связей.';
+      if (response.headersSent) {
+        response.write(`${JSON.stringify({ type: 'error', message })}\n`);
+        response.end();
+      } else {
+        response.status(error instanceof z.ZodError ? 400 : 500).json({ error: message });
+      }
+    }
+  });
+
+  app.post('/api/research/questions/stream', async (request, response) => {
+    try {
+      const { caseId, questionId, instruction } = questionResearchRequestSchema.parse(request.body);
+      const investigationCase = await options.store.load(caseId);
+      const questionEntity = investigationCase.entities.find((entity) => entity.id === questionId && entity.type === 'question');
+      if (!questionEntity) {
+        response.status(404).json({ error: 'Карточка вопроса не найдена.' });
+        return;
+      }
+      const codex = await detectCodex();
+      if (!codex.ready) {
+        response.status(503).json({ error: codex.installed ? 'Codex CLI найден, но требуется авторизация.' : 'Codex CLI не найден. Доисследование вопроса отключено.' });
+        return;
+      }
+      const mcpSettings = await mcpSettingsStore.load();
+      const mcpView = await mcpSettingsStore.view();
+      const unavailableEnabledServer = mcpSettings.servers.find((server) => server.enabled && !mcpView.readiness.find((item) => item.id === server.id)?.ready);
+      if (unavailableEnabledServer) {
+        const status = mcpView.readiness.find((item) => item.id === unavailableEnabledServer.id);
+        response.status(503).json({ error: `MCP «${unavailableEnabledServer.name}» не готов: ${status?.message ?? 'проверьте настройки.'}` });
+        return;
+      }
+      response.status(200);
+      response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-cache, no-transform');
+      response.setHeader('X-Accel-Buffering', 'no');
+      response.flushHeaders();
+      const emit = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
+      const runner = new CodexResearchRunner(codex.path, process.cwd(), mcpSettings);
+      emit({ type: 'result', result: await runner.investigateQuestion(questionEntity, investigationCase, instruction, emit) });
+      response.end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка доисследования вопроса.';
       if (response.headersSent) {
         response.write(`${JSON.stringify({ type: 'error', message })}\n`);
         response.end();
