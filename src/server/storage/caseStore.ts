@@ -5,6 +5,16 @@ import { createSeedCase } from '../../shared/seed.js';
 import { normalizeCaseSubject } from '../../shared/caseSubject.js';
 import { normalizeResearchMemory } from '../../shared/researchMemory.js';
 import { normalizeCaseQuestions } from '../../shared/questions.js';
+import { normalizeUploadedFileName } from '../research/uploadedFileName.js';
+
+function normalizeMaterialFileNames(investigationCase: InvestigationCase): InvestigationCase {
+  const materials = (investigationCase.materials ?? []).map((material) => {
+    if (material.kind === 'note') return material;
+    const name = normalizeUploadedFileName(material.name);
+    return name === material.name ? material : { ...material, name };
+  });
+  return { ...investigationCase, materials };
+}
 
 function slugify(value: string): string {
   const transliteration: Record<string, string> = {
@@ -59,7 +69,7 @@ export class CaseStore {
     await this.ensureInitialized();
     const resolvedId = id ?? (await this.list())[0]?.id;
     if (!resolvedId || !isSafeCaseId(resolvedId)) throw new Error('Некорректный идентификатор дела.');
-    return normalizeCaseQuestions(normalizeResearchMemory(normalizeCaseSubject(JSON.parse(await readFile(this.filePath(resolvedId), 'utf8')) as InvestigationCase)));
+    return normalizeMaterialFileNames(normalizeCaseQuestions(normalizeResearchMemory(normalizeCaseSubject(JSON.parse(await readFile(this.filePath(resolvedId), 'utf8')) as InvestigationCase))));
   }
 
   async create(input: CreateCaseInput): Promise<InvestigationCase> {
@@ -148,7 +158,7 @@ export class CaseStore {
   }
 
   private async writeCase(investigationCase: InvestigationCase): Promise<InvestigationCase> {
-    const savedCase = { ...normalizeCaseQuestions(normalizeResearchMemory(normalizeCaseSubject(investigationCase))), updatedAt: new Date().toISOString() };
+    const savedCase = { ...normalizeMaterialFileNames(normalizeCaseQuestions(normalizeResearchMemory(normalizeCaseSubject(investigationCase)))), updatedAt: new Date().toISOString() };
     await mkdir(this.casesDirectory, { recursive: true });
     const targetPath = this.filePath(savedCase.id);
     const temporaryPath = `${targetPath}.tmp`;

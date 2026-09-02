@@ -34,6 +34,13 @@ describe('research document extraction', () => {
     expect(result.sha256).toHaveLength(64);
   });
 
+  it('restores a Cyrillic multipart file name decoded as Latin-1', async () => {
+    const originalName = 'OSINT_отчёт_объект.md';
+    const multipartName = Buffer.from(originalName, 'utf8').toString('latin1');
+    const result = await extractResearchDocument({ originalName: multipartName, mimeType: 'text/markdown', buffer: Buffer.from('# Материал') });
+    expect(result.fileName).toBe(originalName);
+  });
+
   it('reads ordinary text and removes HTML markup', async () => {
     const text = await extractResearchDocument({ originalName: 'facts.txt', mimeType: 'text/plain', buffer: Buffer.from('ИНН 1234567890') });
     const html = await extractResearchDocument({ originalName: 'page.html', mimeType: 'text/html', buffer: Buffer.from('<h1>Компания</h1><script>ignore()</script><p>Директор Петров</p>') });

@@ -5,6 +5,7 @@ import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import type { ResearchDocument } from '../../shared/domain.js';
 import { getResearchFileDefinition, researchFileFormatSummary } from '../../shared/researchFileTypes.js';
+import { normalizeUploadedFileName } from './uploadedFileName.js';
 
 export const maximumResearchFileBytes = 24 * 1024 * 1024;
 export const maximumResearchDocumentCharacters = 180_000;
@@ -12,7 +13,7 @@ export const maximumResearchDocumentCharacters = 180_000;
 export class DocumentExtractionError extends Error {}
 
 function safeFileName(fileName: string): string {
-  return path.basename(fileName).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'document';
+  return path.basename(normalizeUploadedFileName(fileName)).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'document';
 }
 
 function decodeText(buffer: Buffer): string {
