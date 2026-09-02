@@ -18,7 +18,9 @@ interface SettingsPageProps {
   motionLevel: MotionLevel;
   onMotionLevelChange: (level: MotionLevel) => void;
   googleStatus: GoogleIntegrationStatus;
+  connectingGoogle: boolean;
   disconnectingGoogle: boolean;
+  onConnectGoogle: () => void;
   onDisconnectGoogle: () => void;
   onRefresh: () => void;
   onOpenBoard: () => void;
@@ -27,7 +29,7 @@ interface SettingsPageProps {
 type SettingsSectionId = 'codex' | 'board' | 'google' | 'mcp';
 type OpenSections = Record<SettingsSectionId, boolean>;
 
-export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, autoOpenInspector, onAutoOpenInspectorChange, autoSave, onAutoSaveChange, motionLevel, onMotionLevelChange, googleStatus, disconnectingGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
+export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitResearchChange, autoOpenInspector, onAutoOpenInspectorChange, autoSave, onAutoSaveChange, motionLevel, onMotionLevelChange, googleStatus, connectingGoogle, disconnectingGoogle, onConnectGoogle, onDisconnectGoogle, onRefresh, onOpenBoard }: SettingsPageProps) {
   const { codex } = health;
   const [openSections, setOpenSections] = useState<OpenSections>(() => appPersistence.get<OpenSections>('detective:settings-sections', { codex: !codex.ready, board: false, google: false, mcp: false }, isOpenSections));
 
@@ -61,7 +63,7 @@ export function SettingsPage({ health, refreshing, autoFitResearch, onAutoFitRes
 
       <SettingsSection title="Google Контакты" description="Импорт личной адресной книги · только чтение" icon={<ContactRound size={15} />} status={<InlineStatus tone={googleStatus.connected ? 'success' : googleStatus.configured ? 'warning' : 'info'}>{googleStatus.connected ? 'Подключено' : googleStatus.configured ? 'Не подключено' : 'Не настроено'}</InlineStatus>} open={openSections.google} onToggle={(open) => setSectionOpen('google', open)}>
         <p className="settings-section__message">{googleStatus.message}</p>
-        {!googleStatus.configured ? <div className="setup-instruction"><code>GOOGLE_CLIENT_ID</code><code>GOOGLE_CLIENT_SECRET</code><span>Redirect URI: <strong>http://localhost:8787/api/google/oauth/callback</strong></span></div> : <div className="settings-section__actions">{googleStatus.connected ? <Button disabled={disconnectingGoogle} onClick={onDisconnectGoogle}><Unplug size={12} />{disconnectingGoogle ? 'Отключаем…' : 'Отключить'}</Button> : <Button variant="primary" onClick={() => window.location.assign('/api/google/oauth/start')}><ContactRound size={12} />Подключить Google</Button>}</div>}
+        {!googleStatus.configured ? <div className="setup-instruction"><span>OAuth-клиент Google недоступен в этой сборке.</span></div> : <div className="settings-section__actions">{googleStatus.connected ? <><Button disabled={connectingGoogle || disconnectingGoogle} onClick={onConnectGoogle}><ContactRound size={12} />Сменить аккаунт</Button><Button disabled={disconnectingGoogle} onClick={onDisconnectGoogle}><Unplug size={12} />{disconnectingGoogle ? 'Отключаем…' : 'Отключить'}</Button></> : <Button variant="primary" disabled={connectingGoogle} onClick={onConnectGoogle}><ContactRound size={12} />{connectingGoogle ? 'Ожидаем Google…' : 'Подключить Google'}</Button>}</div>}
       </SettingsSection>
 
       <McpSettingsSection open={openSections.mcp} onToggle={(open) => setSectionOpen('mcp', open)} />

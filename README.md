@@ -100,10 +100,9 @@ CODEX_CLI_PATH=
 PORT=8787
 HOST=127.0.0.1
 
-# Google People API, доступ только на чтение.
+# Необязательная замена встроенного публичного Desktop OAuth Client ID.
 GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=http://localhost:8787/api/google/oauth/callback
+GOOGLE_REDIRECT_URI=http://127.0.0.1:8787/api/google/oauth/callback
 ```
 
 ### Codex CLI
@@ -130,15 +129,9 @@ npm run dev
 
 ### Google Контакты
 
-Интеграция использует Google People API и минимальный OAuth scope `contacts.readonly`.
+Интеграция использует Google People API, публичный OAuth-клиент типа **Desktop app**, PKCE и минимальный scope `contacts.readonly`. Пользователю не нужны собственные ключи: достаточно открыть настройки и нажать **Подключить Google**. Авторизация выполняется в отдельном окне Google и не передаёт пароль приложению.
 
-1. Включите People API в Google Cloud Console.
-2. Создайте OAuth-клиент типа **Web application**.
-3. Добавьте redirect URI `http://localhost:8787/api/google/oauth/callback`.
-4. Заполните `GOOGLE_CLIENT_ID` и `GOOGLE_CLIENT_SECRET` в `.env`.
-5. Перезапустите приложение и подключите Google в настройках.
-
-Refresh token хранится только локально в `data/google-contacts-token.json` с правами `0600` и исключён из Git. Импорт контакта не запускает исследование автоматически.
+В macOS refresh token хранится в системной Связке ключей. На остальных поддерживаемых системах используется локальный файл `data/google-contacts-token.json` с правами `0600`, исключённый из Git. Старый локальный токен на macOS автоматически переносится в Связку ключей. `GOOGLE_CLIENT_ID` в `.env` нужен только разработчику для замены встроенного публичного клиента; `client_secret` приложение не использует. Импорт контакта не запускает исследование автоматически.
 
 ## Работа с доской
 

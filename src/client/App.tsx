@@ -94,6 +94,7 @@ export function App() {
   const [pendingDeleteEntityIds, setPendingDeleteEntityIds] = useState<string[]>([]);
   const [researchByEntityId, setResearchByEntityId] = useState<Record<string, EntityResearchState>>({});
   const [refreshingCodex, setRefreshingCodex] = useState(false);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
   const [revealEntityRequest, setRevealEntityRequest] = useState<{ entityId: string; key: number }>();
   const [fitGraphRequestKey, setFitGraphRequestKey] = useState<number>();
@@ -150,11 +151,24 @@ export function App() {
       })
       .catch((error: Error) => setMessage(error.message));
 
-    const googleResult = new URLSearchParams(window.location.search).get('google');
-    if (googleResult) {
-      setMessage(googleResult === 'connected' ? 'Google Контакты подключены.' : 'Не удалось подключить Google Контакты. Повторите попытку.');
-      window.history.replaceState({}, '', window.location.pathname);
-    }
+  }, []);
+
+  useEffect(() => {
+    const handleGoogleOAuthResult = async (event: MessageEvent) => {
+      let origin: URL;
+      try { origin = new URL(event.origin); } catch { return; }
+      if (!['127.0.0.1', 'localhost', '::1'].includes(origin.hostname) || event.data?.type !== 'detective-google-oauth') return;
+      setConnectingGoogle(false);
+      try {
+        const status = await api.googleStatus();
+        setGoogleStatus(status);
+        setMessage(status.connected ? 'Google Контакты подключены.' : 'Google не предоставил доступ к контактам.');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Не удалось проверить подключение Google.');
+      }
+    };
+    window.addEventListener('message', handleGoogleOAuthResult);
+    return () => window.removeEventListener('message', handleGoogleOAuthResult);
   }, []);
 
   const selectedEntity = useMemo(() => investigationCase?.entities.find((entity) => entity.id === selectedEntityId), [investigationCase, selectedEntityId]);
@@ -988,6 +1002,27 @@ export function App() {
     }
   }
 
+  function connectGoogle() {
+    const popup = window.open('/api/google/oauth/start', 'detective-google-oauth', 'popup=yes,width=560,height=720,resizable=yes,scrollbars=yes');
+    if (!popup) {
+      setMessage('Браузер заблокировал окно Google. Разрешите всплывающие окна для локального приложения и повторите попытку.');
+      return;
+    }
+    setConnectingGoogle(true);
+    setMessage('Завершите авторизацию в открывшемся окне Google.');
+    const startedAt = Date.now();
+    const polling = window.setInterval(async () => {
+      if (!popup.closed && Date.now() - startedAt < 10 * 60 * 1000) return;
+      window.clearInterval(polling);
+      setConnectingGoogle(false);
+      try {
+        const status = await api.googleStatus();
+        setGoogleStatus(status);
+        if (status.connected) setMessage('Google Контакты подключены.');
+      } catch { /* Сообщение из OAuth-окна содержит основную обратную связь. */ }
+    }, 600);
+  }
+
   function markChangesRead(changeIds: string[]) {
     if (changeIds.length === 0) return;
     commit((current) => markCaseChangesRead(current, changeIds), false);
@@ -1097,7 +1132,7 @@ export function App() {
   return (
     <main className={`app-shell ${inspectorVisible ? 'has-inspector' : ''}`} data-theme="dark" data-motion={motionLevel}>
       {page === 'settings' ? (
-        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} autoOpenInspector={autoOpenInspector} onAutoOpenInspectorChange={setAutoOpenInspector} autoSave={autoSave} onAutoSaveChange={setAutoSave} motionLevel={motionLevel} onMotionLevelChange={setMotionLevel} googleStatus={googleStatus} disconnectingGoogle={disconnectingGoogle} onDisconnectGoogle={disconnectGoogle} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
+        <SettingsPage health={health} refreshing={refreshingCodex} autoFitResearch={autoFitResearch} onAutoFitResearchChange={setAutoFitResearch} autoOpenInspector={autoOpenInspector} onAutoOpenInspectorChange={setAutoOpenInspector} autoSave={autoSave} onAutoSaveChange={setAutoSave} motionLevel={motionLevel} onMotionLevelChange={setMotionLevel} googleStatus={googleStatus} connectingGoogle={connectingGoogle} disconnectingGoogle={disconnectingGoogle} onConnectGoogle={connectGoogle} onDisconnectGoogle={disconnectGoogle} onRefresh={refreshCodexStatus} onOpenBoard={() => setPage('board')} />
       ) : <>
       <section className="workspace">
         <header className="topbar">
