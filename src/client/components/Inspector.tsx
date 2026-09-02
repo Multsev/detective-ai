@@ -21,7 +21,7 @@ interface InspectorProps {
   changes: CaseChange[];
   caseChanges: CaseChange[];
   onAddAttribute: (input: { key: string; label: string; value: string; kind: EntityAttributeKind }) => void;
-  onAddFileMaterial: (file: File) => void;
+  onAddFileMaterial: (file: File) => Promise<void>;
   onAddNoteMaterial: (name: string, content: string) => void;
   onRemoveMaterial: (materialId: string) => void;
   onUpdateRelation: (input: { label: string; explanation: string }) => void;
@@ -51,6 +51,8 @@ export function Inspector({ entity, relation, allEntities, allRelations, sources
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteName, setNoteName] = useState('Заметка');
   const [noteContent, setNoteContent] = useState('');
+  const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
+  const [materialUploadError, setMaterialUploadError] = useState('');
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
 
   useEffect(() => {
@@ -59,6 +61,8 @@ export function Inspector({ entity, relation, allEntities, allRelations, sources
     setNoteOpen(false);
     setNoteName('Заметка');
     setNoteContent('');
+    setUploadingFiles([]);
+    setMaterialUploadError('');
   }, [entity?.id]);
 
   useEffect(() => {
@@ -119,6 +123,16 @@ export function Inspector({ entity, relation, allEntities, allRelations, sources
   const attributeDefinitions = getEntityAttributeDefinitions(entity.type);
   const selectedAttributeDefinition = attributeDefinitions.find((definition) => definition.key === attributeKey) ?? attributeDefinitions[0];
   const unreadChanges = changes.filter((change) => !change.readAt);
+
+  async function uploadMaterials(files: File[]): Promise<void> {
+    if (files.length === 0) return;
+    setMaterialUploadError('');
+    setUploadingFiles(files.map((file) => file.name));
+    const outcomes = await Promise.allSettled(files.map((file) => onAddFileMaterial(file)));
+    const failed = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+    if (failed) setMaterialUploadError(failed.reason instanceof Error ? failed.reason.message : 'Не удалось загрузить выбранный материал.');
+    setUploadingFiles([]);
+  }
 
   return (
     <aside className="inspector">
@@ -182,19 +196,20 @@ export function Inspector({ entity, relation, allEntities, allRelations, sources
 
       <details className="inspector-section material-section">
         <summary><span>Материалы</span><small>{materials.length}{materials.some((material) => material.status !== 'processed') ? ` · ${materials.filter((material) => material.status !== 'processed').length} новых` : ''}</small></summary>
-        <div className="material-drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+        <div className="material-drop-zone" aria-busy={uploadingFiles.length > 0} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
           event.preventDefault();
-          for (const file of event.dataTransfer.files) onAddFileMaterial(file);
+          void uploadMaterials([...event.dataTransfer.files]);
         }}>
           <FileUp size={15} /><span>Перетащите {researchFileFormatSummary}</span>
           <label className="detective-button material-file-trigger">
-            <span>Выбрать</span>
+            <span>{uploadingFiles.length > 0 ? 'Загрузка…' : 'Выбрать'}</span>
             <input type="file" multiple accept={researchFileAccept} aria-label="Выбрать материалы на компьютере" onChange={(event) => {
-              for (const file of event.target.files ?? []) onAddFileMaterial(file);
+              void uploadMaterials([...(event.target.files ?? [])]);
               event.currentTarget.value = '';
             }} />
           </label>
         </div>
+        {materialUploadError && <p className="material-upload-message is-error" role="alert">{materialUploadError}</p>}
         <div className="material-toolbar"><Button onClick={() => setNoteOpen((current) => !current)}><Plus size={12} />Заметка</Button></div>
         {noteOpen && <div className="material-note-composer">
           <TextField value={noteName} onChange={(event) => setNoteName(event.target.value)} placeholder="Название заметки" />
@@ -206,12 +221,16 @@ export function Inspector({ entity, relation, allEntities, allRelations, sources
           }}>Добавить</Button></footer>
         </div>}
         <div className="material-list">
+          {uploadingFiles.map((fileName) => <div className="material-row is-uploading" key={`uploading-${fileName}`}>
+            <span><FileUp size={12} /></span>
+            <div><strong>{fileName}</strong><small>Загружается и проверяется…</small></div>
+          </div>)}
           {materials.map((material) => <div className={`material-row is-${material.status}`} key={material.id} title={material.errorMessage}>
             <span>{material.kind === 'note' ? <StickyNote size={12} /> : <FileText size={12} />}</span>
             <div><strong>{material.name}</strong><small>{materialStatusLabels[material.status]}{material.processedAt ? ` · ${new Date(material.processedAt).toLocaleString('ru-RU')}` : ''}</small></div>
             <button className="material-remove" type="button" title={`Удалить материал ${material.name}`} aria-label={`Удалить материал ${material.name}`} onClick={() => onRemoveMaterial(material.id)}><Trash2 size={11} /></button>
           </div>)}
-          {materials.length === 0 && <p className="muted-copy">Добавьте документы или заметки. При следующем поиске Codex обработает только новые материалы.</p>}
+          {materials.length === 0 && uploadingFiles.length === 0 && <p className="muted-copy">Добавьте документы или заметки. При следующем поиске Codex обработает только новые материалы.</p>}
         </div>
       </details>
 

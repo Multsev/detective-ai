@@ -438,7 +438,12 @@ export function App() {
       setMessage(result.duplicate ? `Материал «${file.name}» уже прикреплён к карточке.` : `Материал «${file.name}» добавлен и ожидает обработки.`);
     });
     materialMutationQueue.current = task;
-    try { await task; } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось добавить материал.'); }
+    try {
+      await task;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Не удалось добавить материал.');
+      throw error;
+    }
   }
 
   async function addNoteMaterial(name: string, content: string) {
@@ -1202,7 +1207,7 @@ export function App() {
         changes={inspectorEntity ? getEntityCaseChanges(displayedCase, inspectorEntity.id) : selectedRelation ? recentChanges.filter((change) => change.targetType === 'relation' && change.targetId === selectedRelation.id) : []}
         caseChanges={recentChanges}
         onAddAttribute={addAttribute}
-        onAddFileMaterial={(file) => void addFileMaterial(file)}
+        onAddFileMaterial={addFileMaterial}
         onAddNoteMaterial={(name, content) => void addNoteMaterial(name, content)}
         onRemoveMaterial={(materialId) => void removeMaterial(materialId)}
         onUpdateRelation={updateSelectedRelation}
