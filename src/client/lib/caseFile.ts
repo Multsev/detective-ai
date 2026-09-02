@@ -39,6 +39,11 @@ export function downloadCaseFile(investigationCase: InvestigationCase): void {
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = caseFileName(investigationCase);
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+
+  // The browser needs the object URL until it has accepted the download.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }

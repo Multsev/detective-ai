@@ -18,6 +18,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { CircleCheck, CircleHelp, Filter, Info, ListTree, Search, Settings, TriangleAlert, X } from 'lucide-react';
+import { isOutsideMenu } from './menuInteraction';
 import { appPersistence } from './persistence';
 export { appPersistence } from './persistence';
 export { SelectionModel } from './selection';
@@ -95,15 +96,19 @@ export function MenuBar({ children }: { children: ReactNode }) { return <nav cla
 export function Menu({ label, items }: { label: string; items: MenuEntry[] }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const floatingMenu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 44 });
   useEffect(() => {
     if (!open) return;
-    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (isOutsideMenu(target, root.current, floatingMenu.current)) setOpen(false);
+    };
     window.addEventListener('pointerdown', close);
     return () => window.removeEventListener('pointerdown', close);
   }, [open]);
-  return <div ref={root} className="detective-app-menu"><button ref={trigger} className={open ? 'is-open' : ''} aria-haspopup="menu" aria-expanded={open} onClick={() => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ left: Math.min(rect.left, window.innerWidth - 250), top: rect.bottom + 5 }); setOpen((value) => !value); }}>{label}</button>{open && createPortal(<div className="detective-floating-menu" role="menu" style={position}><MenuEntries items={items} close={() => setOpen(false)} /></div>, document.body)}</div>;
+  return <div ref={root} className="detective-app-menu"><button ref={trigger} className={open ? 'is-open' : ''} aria-haspopup="menu" aria-expanded={open} onClick={() => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ left: Math.min(rect.left, window.innerWidth - 250), top: rect.bottom + 5 }); setOpen((value) => !value); }}>{label}</button>{open && createPortal(<div ref={floatingMenu} className="detective-floating-menu" role="menu" style={position}><MenuEntries items={items} close={() => setOpen(false)} /></div>, document.body)}</div>;
 }
 
 export function ContextMenu({ open, x, y, onClose, children }: { open: boolean; x: number; y: number; onClose: () => void; children: ReactNode }) {
