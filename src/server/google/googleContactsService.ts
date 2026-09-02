@@ -3,7 +3,7 @@ import type { GoogleContact, GoogleIntegrationStatus } from '../../shared/domain
 import { GoogleTokenStore, type GoogleTokens } from './googleTokenStore.js';
 
 export const googleContactsReadonlyScope = 'https://www.googleapis.com/auth/contacts.readonly';
-export const defaultGoogleDesktopClientId = '840778971863-iv9o2lcp25jlg4ktj3ispbca9eh12kai.apps.googleusercontent.com';
+export const defaultGoogleDesktopClientId = '840778971863-ncu3dbv7i3rvlb4g69cl4ed1cg2n0vql.apps.googleusercontent.com';
 const authorizationEndpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
 const tokenEndpoint = 'https://oauth2.googleapis.com/token';
 const revokeEndpoint = 'https://oauth2.googleapis.com/revoke';
