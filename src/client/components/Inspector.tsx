@@ -152,17 +152,19 @@ export function Inspector({ entity, relation, allEntities, allRelations, sources
         <div className="entity-changes-list">{changes.slice(0, 12).map((change) => <article className={change.readAt ? 'is-read' : 'is-unread'} key={change.id}><small>{new Date(change.detectedAt).toLocaleString('ru-RU')}</small><strong>{change.summary}</strong>{change.fields.length > 0 && <dl>{change.fields.slice(0, 4).map((field) => <div key={field.field}><dt>{field.field}</dt><dd>{field.before && <del>{field.before}</del>}{field.after && <ins>{field.after}</ins>}</dd></div>)}</dl>}</article>)}</div>
       </details>}
       {entityDate && <div className="inspector-object-date"><CalendarDays size={12} /><span>Дата объекта</span><time dateTime={entity.occurredAt}>{entityDate}</time></div>}
-      {provenance && <div className="inspector-entity-sources" aria-label="Источники карточки">
-        <strong>Источник</strong>
-        {provenance.sources.length > 0 ? provenance.sources.map((source) => {
-          const reference = sourceById.get(source.id);
-          const freshness = reference ? sourceFreshnessLabel(reference) : '';
-          return source.href
-            ? <a href={source.href} target="_blank" rel="noreferrer" title={`${source.title}${freshness ? ` · ${freshness}` : ''}`} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}{freshness && <em>{freshness}</em>}<ArrowUpRight size={9} /></a>
-            : <span title={`${source.title}${freshness ? ` · ${freshness}` : ''}`} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}{freshness && <em>{freshness}</em>}</span>;
-        })
-          : <span title={provenance.primary.title}>{provenance.primary.label}</span>}
-      </div>}
+      {provenance && <details className="inspector-entity-sources" aria-label="Источники карточки">
+        <summary><span>Источники</span><small>{provenance.sources.length || 1}</small></summary>
+        <div className="inspector-entity-sources__list">
+          {provenance.sources.length > 0 ? provenance.sources.map((source) => {
+            const reference = sourceById.get(source.id);
+            const freshness = reference ? sourceFreshnessLabel(reference) : '';
+            return source.href
+              ? <a href={source.href} target="_blank" rel="noreferrer" title={`${source.title}${freshness ? ` · ${freshness}` : ''}`} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}{freshness && <em>{freshness}</em>}<ArrowUpRight size={9} /></a>
+              : <span title={`${source.title}${freshness ? ` · ${freshness}` : ''}`} key={source.id}>{source.label}{source.dateLabel && <time dateTime={source.publishedAt}>{source.dateLabel}</time>}{freshness && <em>{freshness}</em>}</span>;
+          })
+            : <span title={provenance.primary.title}>{provenance.primary.label}</span>}
+        </div>
+      </details>}
 
       <section className="inspector-section entity-attributes-section">
         <div className="section-heading"><h3>Реквизиты</h3><span>{entity.attributes?.length ?? 0}</span></div>
