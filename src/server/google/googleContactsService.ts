@@ -12,6 +12,7 @@ const personFields = 'names,nicknames,phoneNumbers,emailAddresses,organizations,
 
 export interface GoogleOAuthConfig {
   clientId: string;
+  clientSecret?: string;
   redirectUri: string;
 }
 
@@ -57,15 +58,18 @@ interface ConnectionsResponse {
 
 export function loadGoogleOAuthConfig(environment: NodeJS.ProcessEnv = process.env): GoogleOAuthConfig | undefined {
   const clientId = environment.GOOGLE_CLIENT_ID?.trim() || defaultGoogleDesktopClientId;
+  const clientSecret = environment.GOOGLE_CLIENT_SECRET?.trim();
   if (!clientId) return undefined;
   return {
     clientId,
+    ...(clientSecret ? { clientSecret } : {}),
     redirectUri: environment.GOOGLE_REDIRECT_URI?.trim() || `http://127.0.0.1:${environment.PORT?.trim() || '8787'}/api/google/oauth/callback`,
   };
 }
 
 export class GoogleContactsService {
   private readonly authorizationSessions = new Map<string, AuthorizationSession>();
+  private lastAuthorizationError?: string;
 
   constructor(
     private readonly tokenStore = new GoogleTokenStore(),
@@ -80,12 +84,15 @@ export class GoogleContactsService {
       configured: true,
       connected: Boolean(tokens?.accessToken),
       scope: googleContactsReadonlyScope,
-      message: tokens?.accessToken ? `Google Контакты подключены в режиме чтения. Токен хранится ${this.tokenStore.storageLabel}.` : 'Нажмите «Подключить Google» и разрешите чтение контактов.',
+      message: tokens?.accessToken
+        ? `Google Контакты подключены в режиме чтения. Токен хранится ${this.tokenStore.storageLabel}.`
+        : this.lastAuthorizationError || 'Нажмите «Подключить Google» и разрешите чтение контактов.',
     };
   }
 
   createAuthorizationUrl(): string {
     const config = this.requireConfig();
+    this.lastAuthorizationError = undefined;
     this.removeExpiredStates();
     const state = randomBytes(24).toString('base64url');
     const codeVerifier = randomBytes(64).toString('base64url');
@@ -111,14 +118,27 @@ export class GoogleContactsService {
     const session = this.consumeAuthorizationState(returnedState);
     if (!session) throw new Error('Сессия подключения Google устарела. Запустите подключение ещё раз.');
     const config = this.requireConfig();
+    const parameters = new URLSearchParams({ code, client_id: config.clientId, code_verifier: session.codeVerifier, redirect_uri: config.redirectUri, grant_type: 'authorization_code' });
+    if (config.clientSecret) parameters.set('client_secret', config.clientSecret);
     const response = await this.fetcher(tokenEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code, client_id: config.clientId, code_verifier: session.codeVerifier, redirect_uri: config.redirectUri, grant_type: 'authorization_code' }),
+      body: parameters,
     });
     const payload = await response.json() as GoogleTokenResponse;
-    if (!response.ok || !payload.access_token) throw new Error(payload.error_description || 'Google не вернул токен доступа.');
+    if (!response.ok || !payload.access_token) {
+      const message = payload.error_description === 'client_secret is missing.'
+        ? 'Текущий OAuth-клиент Google требует Client Secret. Добавьте GOOGLE_CLIENT_SECRET в локальный файл .env или используйте OAuth-клиент типа Desktop app.'
+        : payload.error_description || 'Google не вернул токен доступа.';
+      this.recordAuthorizationFailure(message);
+      throw new Error(message);
+    }
     await this.tokenStore.save(this.toStoredTokens(payload));
+    this.lastAuthorizationError = undefined;
+  }
+
+  recordAuthorizationFailure(message: string): void {
+    this.lastAuthorizationError = message;
   }
 
   async listContacts(): Promise<GoogleContact[]> {
@@ -180,10 +200,12 @@ export class GoogleContactsService {
     if (tokens.expiresAt > Date.now() + 60_000) return tokens.accessToken;
     if (!tokens.refreshToken) throw new Error('Срок доступа Google истёк. Подключите аккаунт повторно.');
     const config = this.requireConfig();
+    const parameters = new URLSearchParams({ client_id: config.clientId, refresh_token: tokens.refreshToken, grant_type: 'refresh_token' });
+    if (config.clientSecret) parameters.set('client_secret', config.clientSecret);
     const response = await this.fetcher(tokenEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: config.clientId, refresh_token: tokens.refreshToken, grant_type: 'refresh_token' }),
+      body: parameters,
     });
     const payload = await response.json() as GoogleTokenResponse;
     if (!response.ok || !payload.access_token) throw new Error(payload.error_description || 'Не удалось обновить доступ к Google Contacts.');

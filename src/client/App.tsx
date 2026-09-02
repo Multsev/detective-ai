@@ -162,7 +162,7 @@ export function App() {
       try {
         const status = await api.googleStatus();
         setGoogleStatus(status);
-        setMessage(status.connected ? 'Google Контакты подключены.' : 'Google не предоставил доступ к контактам.');
+        setMessage(status.connected ? 'Google Контакты подключены.' : event.data?.message || status.message || 'Google не предоставил доступ к контактам.');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Не удалось проверить подключение Google.');
       }
@@ -1018,7 +1018,7 @@ export function App() {
       try {
         const status = await api.googleStatus();
         setGoogleStatus(status);
-        if (status.connected) setMessage('Google Контакты подключены.');
+        setMessage(status.connected ? 'Google Контакты подключены.' : status.message);
       } catch { /* Сообщение из OAuth-окна содержит основную обратную связь. */ }
     }, 600);
   }

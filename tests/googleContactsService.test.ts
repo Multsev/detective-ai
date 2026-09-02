@@ -81,4 +81,35 @@ describe('Google Contacts service', () => {
     }));
     expect(loadGoogleOAuthConfig({ PORT: '9999' })).not.toHaveProperty('clientSecret');
   });
+
+  it('sends a configured client secret only to the token endpoint', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'google-secret-'));
+    let tokenRequestBody = '';
+    const fakeFetch = async (_input: string | URL | Request, init?: RequestInit) => {
+      tokenRequestBody = String(init?.body ?? '');
+      return new Response(JSON.stringify({ access_token: 'access', expires_in: 3600 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const service = new GoogleContactsService(new GoogleTokenStore(directory), { clientId: 'client', clientSecret: 'local-secret', redirectUri: 'http://127.0.0.1/callback' }, fakeFetch as typeof fetch);
+    try {
+      const authorizationUrl = new URL(service.createAuthorizationUrl());
+      expect(authorizationUrl.searchParams.has('client_secret')).toBe(false);
+      await service.completeAuthorization('code', authorizationUrl.searchParams.get('state')!);
+      expect(new URLSearchParams(tokenRequestBody).get('client_secret')).toBe('local-secret');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps an actionable token-exchange error in integration status', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'google-error-'));
+    const fakeFetch = async () => new Response(JSON.stringify({ error: 'invalid_request', error_description: 'client_secret is missing.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    const service = new GoogleContactsService(new GoogleTokenStore(directory), { clientId: 'client', redirectUri: 'http://127.0.0.1/callback' }, fakeFetch as typeof fetch);
+    try {
+      const authorizationUrl = new URL(service.createAuthorizationUrl());
+      await expect(service.completeAuthorization('code', authorizationUrl.searchParams.get('state')!)).rejects.toThrow('GOOGLE_CLIENT_SECRET');
+      expect((await service.status()).message).toContain('GOOGLE_CLIENT_SECRET');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
