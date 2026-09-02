@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import {
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
   getViewportForBounds,
   ReactFlow,
@@ -19,13 +20,16 @@ import { evidenceStyles } from '../../shared/evidenceStyle';
 import { getResearchSubjectEntityId } from '../../shared/caseSubject';
 import { isEntityVisible } from '../lib/graph';
 import { buildEntityProvenanceIndex } from '../lib/entityProvenance';
+import { buildParallelEdgeOffsets } from '../lib/floatingEdgeGeometry';
 import { getGraphBounds, isDenseGraph, reconcileFlowNodes, shouldReduceGraphDetail } from '../lib/graphPerformance';
-import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
-import { EntityNode, type EntityFlowNode } from './EntityNode';
-import { motionDuration, motionDurations, type MotionLevel } from '../motion/motionPreferences';
 import { registerBackgroundClick } from '../lib/boardInteraction';
+import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
+import { motionDuration, motionDurations, type MotionLevel } from '../motion/motionPreferences';
+import { EntityNode, type EntityFlowNode } from './EntityNode';
+import { FloatingRelationEdge } from './FloatingRelationEdge';
 
 const nodeTypes = { entity: EntityNode };
+const edgeTypes = { floatingRelation: FloatingRelationEdge };
 
 interface BoardProps {
   investigationCase: InvestigationCase;
@@ -117,26 +121,29 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
     hidden: !isEntityVisible(entity, visibleTypes, search, visibleQuestionStatuses) || Boolean(subjectNetworkIds && !subjectNetworkIds.has(entity.id)) || (onlyWithUnreadChanges && !unreadChangeCountByEntity.has(entity.id)),
   })), [activeEntityId, enteringEntityIds, entityMotionById, investigationCase.entities, onlyWithUnreadChanges, provenanceByEntityId, reducedDetail, removingEntityIds, researchByEntityId, researchSubjectEntityId, search, selectedEntityIds, subjectNetworkIds, unreadChangeCountByEntity, visibleQuestionStatuses, visibleTypes]);
 
-  const flowEdges = useMemo<Edge[]>(() => investigationCase.relations.map((relation) => {
-    const visual = evidenceStyles[relation.status];
-    return {
-      id: relation.id,
-      source: relation.sourceId,
-      target: relation.targetId,
-      label: reducedDetail ? undefined : `${relation.label} · ${Math.round(relation.confidence * 100)}%`,
-      type: 'default',
-      animated: !denseGraph && relation.status === 'hypothesis',
-      className: `${enteringRelationIds.has(relation.id) ? 'relation-motion-entering ' : ''}${removingEntityIds.has(relation.sourceId) || removingEntityIds.has(relation.targetId) ? 'relation-motion-removing' : ''}`.trim(),
-      style: { stroke: visual.color, strokeWidth: visual.width, strokeDasharray: visual.dash },
-      labelStyle: { fill: '#25303a', fontWeight: 750, fontSize: 11 },
-      labelBgStyle: { fill: '#efe1c7', fillOpacity: 0.95 },
-      labelBgPadding: [7, 4] as [number, number],
-      labelBgBorderRadius: 4,
-      interactionWidth: 24,
-      data: { relation },
-      hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))) || Boolean(onlyWithUnreadChanges && (!unreadChangeCountByEntity.has(relation.sourceId) || !unreadChangeCountByEntity.has(relation.targetId))),
-    };
-  }), [denseGraph, enteringRelationIds, investigationCase.relations, onlyWithUnreadChanges, reducedDetail, removingEntityIds, subjectNetworkIds, unreadChangeCountByEntity, visibleEvidenceStatuses]);
+  const flowEdges = useMemo<Edge[]>(() => {
+    const parallelOffsets = buildParallelEdgeOffsets(investigationCase.relations);
+    return investigationCase.relations.map((relation) => {
+      const visual = evidenceStyles[relation.status];
+      return {
+        id: relation.id,
+        source: relation.sourceId,
+        target: relation.targetId,
+        label: reducedDetail ? undefined : `${relation.label} · ${Math.round(relation.confidence * 100)}%`,
+        type: 'floatingRelation',
+        animated: !denseGraph && relation.status === 'hypothesis',
+        className: `${enteringRelationIds.has(relation.id) ? 'relation-motion-entering ' : ''}${removingEntityIds.has(relation.sourceId) || removingEntityIds.has(relation.targetId) ? 'relation-motion-removing' : ''}`.trim(),
+        style: { stroke: visual.color, strokeWidth: visual.width, strokeDasharray: visual.dash },
+        labelStyle: { fill: '#25303a', fontWeight: 750, fontSize: 11 },
+        labelBgStyle: { fill: '#efe1c7', fillOpacity: 0.95 },
+        labelBgPadding: [7, 4] as [number, number],
+        labelBgBorderRadius: 4,
+        interactionWidth: 24,
+        data: { relation, denseGraph, parallelOffset: parallelOffsets.get(relation.id) ?? 0 },
+        hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))) || Boolean(onlyWithUnreadChanges && (!unreadChangeCountByEntity.has(relation.sourceId) || !unreadChangeCountByEntity.has(relation.targetId))),
+      };
+    });
+  }, [denseGraph, enteringRelationIds, investigationCase.relations, onlyWithUnreadChanges, reducedDetail, removingEntityIds, subjectNetworkIds, unreadChangeCountByEntity, visibleEvidenceStatuses]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityFlowNode>(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
@@ -158,6 +165,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onMoveStart={() => setIsNavigating(true)}
@@ -178,6 +186,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
           if (connection.source && connection.target) onConnectEntities(connection.source, connection.target);
         }}
         nodesConnectable={!researching}
+        connectionMode={ConnectionMode.Loose}
         connectionLineStyle={{ stroke: '#8a5f31', strokeWidth: 2 }}
         onEdgeClick={(_event, edge) => {
           const relation = investigationCase.relations.find((item) => item.id === edge.id);

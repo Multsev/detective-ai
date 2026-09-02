@@ -27,7 +27,9 @@ const labelByType = {
   note: 'Заметка',
 };
 
-function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
+const connectionHandles = [Position.Top, Position.Right, Position.Bottom, Position.Left];
+
+function EntityNodeView({ data, selected, isConnectable }: NodeProps<EntityFlowNode>) {
   const { entity, research, unreadChangeCount, isResearchSubject, isActiveSelection, provenance, reducedDetail, entering, removing, motionState } = data;
   const Icon = iconByType[entity.type];
   const initials = entity.title.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
@@ -39,7 +41,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
 
   return (
     <article className={`entity-card entity-card--${entity.type}${questionStatus ? ` question-${questionStatus}` : ''}${compactResolvedQuestion ? ' is-question-compact' : ''}${selected ? ' is-selected' : ''}${isActiveSelection ? ' is-active-selection' : ''}${isResearchSubject ? ' is-research-subject' : ''}${research ? ` research-${research.status}` : ''}${reducedDetail ? ' is-reduced-detail' : ''}${entering ? ' is-entering' : ''}${removing ? ' is-removing' : ''}${motionState ? ` motion-${motionState}` : ''}`}>
-      <Handle type="target" position={Position.Left} className="entity-handle" title="Отпустите здесь, чтобы связать карточки" aria-label="Вход связи" />
+      {connectionHandles.map((position) => <Handle key={position} id={`connection-${position}`} type="source" position={position} isConnectable={isConnectable} className="entity-handle" title="Потяните к другой карточке, чтобы создать связь" aria-label="Создать связь" />)}
       {isResearchSubject && <span className="entity-card__subject-badge">Объект дела</span>}
       {unreadChangeCount > 0 && <span className="entity-card__update-badge" title={`Непрочитанных обновлений: ${unreadChangeCount}`} aria-label={`Непрочитанных обновлений: ${unreadChangeCount}`}>{unreadChangeCount > 99 ? '99+' : unreadChangeCount}</span>}
       <header className="entity-card__header">
@@ -72,7 +74,6 @@ function EntityNodeView({ data, selected }: NodeProps<EntityFlowNode>) {
         {research.status === 'running' ? <LoaderCircle size={12} className="spin" /> : research.status === 'completed' ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
         <div key={`${research.status}:${research.stage}`}><strong>{research.status === 'running' ? (research.mode === 'relationships' ? 'Codex ищет связи' : research.mode === 'question_resolution' ? 'Codex проверяет вопрос' : 'Codex ищет информацию') : research.status === 'completed' ? (research.mode === 'relationships' ? 'Связи проверены' : research.mode === 'question_resolution' ? 'Вопрос проверен' : 'Информация обновлена') : 'Ошибка исследования'}</strong><span>{research.message}</span></div>
       </div>}
-      <Handle type="source" position={Position.Right} className="entity-handle" title="Потяните к другой карточке, чтобы создать связь" aria-label="Создать связь" />
     </article>
   );
 }
