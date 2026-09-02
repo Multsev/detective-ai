@@ -128,7 +128,7 @@ export class GoogleContactsService {
     const payload = await response.json() as GoogleTokenResponse;
     if (!response.ok || !payload.access_token) {
       const message = payload.error_description === 'client_secret is missing.'
-        ? 'Текущий OAuth-клиент Google требует Client Secret. Добавьте GOOGLE_CLIENT_SECRET в локальный файл .env или используйте OAuth-клиент типа Desktop app.'
+        ? 'Для этого Desktop OAuth-клиента Google требуется Client Secret. Добавьте его как GOOGLE_CLIENT_SECRET в локальный файл .env и перезапустите приложение.'
         : payload.error_description || 'Google не вернул токен доступа.';
       this.recordAuthorizationFailure(message);
       throw new Error(message);
