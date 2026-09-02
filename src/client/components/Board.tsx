@@ -23,6 +23,7 @@ import { getGraphBounds, isDenseGraph, reconcileFlowNodes, shouldReduceGraphDeta
 import { shouldAutoFitResearchGraph, type ResearchAutoFitState } from '../lib/researchAutoFit';
 import { EntityNode, type EntityFlowNode } from './EntityNode';
 import { motionDuration, motionDurations, type MotionLevel } from '../motion/motionPreferences';
+import { registerBackgroundClick } from '../lib/boardInteraction';
 
 const nodeTypes = { entity: EntityNode };
 
@@ -67,6 +68,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
   const [enteringRelationIds, setEnteringRelationIds] = useState<Set<string>>(() => new Set());
   const previousEntityIds = useRef(new Set(investigationCase.entities.map((entity) => entity.id)));
   const previousRelationIds = useRef(new Set(investigationCase.relations.map((relation) => relation.id)));
+  const lastPaneClickAt = useRef(0);
   const denseGraph = isDenseGraph(investigationCase.entities.length, investigationCase.relations.length);
   const reducedDetail = shouldReduceGraphDetail(investigationCase.entities.length, investigationCase.relations.length, viewportZoom);
 
@@ -130,6 +132,7 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
       labelBgStyle: { fill: '#efe1c7', fillOpacity: 0.95 },
       labelBgPadding: [7, 4] as [number, number],
       labelBgBorderRadius: 4,
+      interactionWidth: 24,
       data: { relation },
       hidden: !visibleEvidenceStatuses.has(relation.status) || Boolean(subjectNetworkIds && (!subjectNetworkIds.has(relation.sourceId) || !subjectNetworkIds.has(relation.targetId))) || Boolean(onlyWithUnreadChanges && (!unreadChangeCountByEntity.has(relation.sourceId) || !unreadChangeCountByEntity.has(relation.targetId))),
     };
@@ -144,7 +147,13 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
   const handleNodeClick: NodeMouseHandler<EntityFlowNode> = (event, node) => onSelectEntity(node.id, event.shiftKey || event.ctrlKey || event.metaKey);
 
   return (
-    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${layoutAnimating ? ' is-layout-animating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`} onDoubleClick={(event) => { if ((event.target as HTMLElement).classList.contains('react-flow__pane')) onOpenAddEntity(); }}>
+    <div ref={boardRef} className={`board-shell${denseGraph ? ' is-dense-graph' : ''}${isNavigating ? ' is-navigating' : ''}${layoutAnimating ? ' is-layout-animating' : ''}${reducedDetail ? ' is-reduced-detail' : ''}`} onClickCapture={(event) => {
+      const target = event.target as Element;
+      if (target.closest('.react-flow__node, .react-flow__edge') || !target.closest('.react-flow__pane')) return;
+      const decision = registerBackgroundClick(lastPaneClickAt.current, event.timeStamp);
+      lastPaneClickAt.current = decision.nextClickAt;
+      if (decision.openAddEntity) onOpenAddEntity();
+    }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -178,7 +187,8 @@ export function Board({ investigationCase, selectedEntityIds, activeEntityId, vi
         onlyRenderVisibleElements
         minZoom={0.15}
         maxZoom={1.7}
-        proOptions={{ hideAttribution: true }}
+        attributionPosition="top-right"
+        zoomOnDoubleClick={false}
       >
         <ResearchAutoFit
           nodes={nodes}

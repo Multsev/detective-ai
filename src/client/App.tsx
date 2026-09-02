@@ -47,6 +47,7 @@ import { researchFileAccept } from '../shared/researchFileTypes';
 import { QuestionAnswerDialog } from './components/QuestionAnswerDialog';
 import { UpdateCenter } from './components/UpdateCenter';
 import { getEntityCaseChanges, getUnreadCaseChanges, markCaseChangesRead, recordResearchRunOutcome } from '../shared/caseChanges';
+import { activeCaseStorageKey, selectInitialCaseId } from './lib/activeCase';
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type EntityMotionState = 'updated' | 'no-change' | 'error';
@@ -137,12 +138,16 @@ export function App() {
 
   useEffect(() => {
     investigationCaseRef.current = investigationCase;
+    if (investigationCase?.id) appPersistence.set(activeCaseStorageKey, investigationCase.id);
   }, [investigationCase]);
 
   useEffect(() => {
     Promise.all([api.listCases(), api.health(), api.googleStatus()])
       .then(async ([summaries, healthStatus, currentGoogleStatus]) => {
-        const loadedCase = await api.loadCase(summaries[0].id);
+        const rememberedCaseId = appPersistence.get<string>(activeCaseStorageKey, '', (value): value is string => typeof value === 'string');
+        const initialCaseId = selectInitialCaseId(summaries, rememberedCaseId);
+        if (!initialCaseId) throw new Error('Не найдено ни одного дела.');
+        const loadedCase = await api.loadCase(initialCaseId);
         setCaseSummaries(summaries);
         setInvestigationCase(loadedCase);
         setHealth(healthStatus);
@@ -197,6 +202,10 @@ export function App() {
       setInspectorEntityId(undefined);
       setSelectedRelationId(undefined);
       setLinkMode(false);
+      setLinkSourceId(undefined);
+      setLinkTargetIds([]);
+      setEntityMenu(undefined);
+      setPaneMenu(undefined);
     };
     window.addEventListener('keydown', closeInspectorOnEscape);
     return () => window.removeEventListener('keydown', closeInspectorOnEscape);
@@ -1236,8 +1245,8 @@ export function App() {
       <ManualLinkDialog open={showManualLinkDialog} source={linkSource} targets={linkTargets} onClose={() => setShowManualLinkDialog(false)} onCreate={createManualLinks} />
       <QuestionAnswerDialog open={Boolean(answerQuestionId)} question={investigationCase.entities.find((entity) => entity.id === answerQuestionId)} entities={investigationCase.entities} onClose={() => setAnswerQuestionId(undefined)} onAnswer={saveManualQuestionAnswer} />
       <RenameCaseDialog open={showRenameCase} title={investigationCase.title} onClose={() => setShowRenameCase(false)} onRename={(title) => { commit((current) => ({ ...current, title })); setShowRenameCase(false); }} />
-      <input ref={caseFileInput} className="visually-hidden" type="file" accept=".detective,.json,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCaseFile(file); }} />
-      <input ref={entityFileInput} className="visually-hidden" type="file" accept={researchFileAccept} onChange={(event) => { const file = event.target.files?.[0]; if (file) addDocumentEntity(file); }} />
+      <input ref={caseFileInput} className="visually-hidden" type="file" aria-label="Открыть файл дела" accept=".detective,.json,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCaseFile(file); }} />
+      <input ref={entityFileInput} className="visually-hidden" type="file" aria-label="Добавить документ на доску" accept={researchFileAccept} onChange={(event) => { const file = event.target.files?.[0]; if (file) addDocumentEntity(file); }} />
       <ContextMenu open={Boolean(entityMenu)} x={entityMenu?.x ?? 0} y={entityMenu?.y ?? 0} onClose={() => setEntityMenu(undefined)}>
         <ContextMenuItem onClick={() => { if (selectedEntityId) setInspectorEntityId(selectedEntityId); setEntityMenu(undefined); }}>{selectedEntityIds.size > 1 ? `Открыть активную карточку` : 'Открыть карточку'}</ContextMenuItem>
         {selectedEntityIds.size === 1 && entityMenu && entityMenu.entityId !== researchSubjectEntityId && <ContextMenuItem disabled={researching} onClick={() => chooseResearchSubject(entityMenu.entityId)}>

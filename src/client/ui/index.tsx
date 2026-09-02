@@ -105,8 +105,15 @@ export function Menu({ label, items }: { label: string; items: MenuEntry[] }) {
       const target = event.target as Node;
       if (isOutsideMenu(target, root.current, floatingMenu.current)) setOpen(false);
     };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
     window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
   }, [open]);
   return <div ref={root} className="detective-app-menu"><button ref={trigger} className={open ? 'is-open' : ''} aria-haspopup="menu" aria-expanded={open} onClick={() => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ left: Math.min(rect.left, window.innerWidth - 250), top: rect.bottom + 5 }); setOpen((value) => !value); }}>{label}</button>{open && createPortal(<div ref={floatingMenu} className="detective-floating-menu" role="menu" style={position}><MenuEntries items={items} close={() => setOpen(false)} /></div>, document.body)}</div>;
 }
@@ -122,9 +129,11 @@ export function ContextMenu({ open, x, y, onClose, children }: { open: boolean; 
   useEffect(() => {
     if (!open) return;
     const close = () => onClose();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('pointerdown', close);
     window.addEventListener('blur', close);
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('blur', close); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('blur', close); window.removeEventListener('keydown', closeOnEscape); };
   }, [open, onClose]);
   if (!open) return null;
   return createPortal(<div ref={ref} className="detective-context-menu" role="menu" style={position} onPointerDown={(event) => event.stopPropagation()}>{children}</div>, document.body);

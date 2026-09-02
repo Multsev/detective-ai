@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { entityTypes, type EntityType } from '../../shared/domain';
 
@@ -17,20 +17,23 @@ export function AddEntityDialog({ onClose, onAdd }: AddEntityDialogProps) {
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [summary, setSummary] = useState('');
+  const titleId = useId();
 
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form className="entity-dialog" onSubmit={(event) => {
+      <form className="entity-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={(event) => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
+      }} onSubmit={(event) => {
         event.preventDefault();
         if (!title.trim()) return;
         onAdd({ type, title: title.trim(), subtitle: subtitle.trim(), summary: summary.trim() });
       }}>
-        <header><div><span className="inspector__eyebrow">Материал расследования</span><h2>Новая карточка</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={18} /></button></header>
+        <header><div><span className="inspector__eyebrow">Материал расследования</span><h2 id={titleId}>Новая карточка</h2></div><button type="button" className="icon-button" aria-label="Закрыть" onClick={onClose}><X size={18} /></button></header>
         <label>Тип<select value={type} onChange={(event) => setType(event.target.value as EntityType)}>{entityTypes.map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
         <label>Название<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Имя человека или название компании" /></label>
         <label>Подзаголовок<input value={subtitle} onChange={(event) => setSubtitle(event.target.value)} placeholder="Роль, должность или краткий контекст" /></label>
         <label>Что уже известно<textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Нейтральное описание без неподтверждённых выводов" /></label>
-        <footer><button type="button" className="ghost-button" onClick={onClose}>Отмена</button><button className="primary-button"><Plus size={16} />Создать карточку</button></footer>
+        <footer><button type="button" className="ghost-button" onClick={onClose}>Отмена</button><button className="primary-button" disabled={!title.trim()}><Plus size={16} />Создать карточку</button></footer>
       </form>
     </div>
   );
