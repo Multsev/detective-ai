@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CaseMaterial, ResearchDocument } from '../../shared/domain.js';
 
@@ -25,7 +25,8 @@ export class CaseMaterialStore {
   async storeFile(caseId: string, entityId: string, input: { originalName: string; kind: ResearchDocument['kind']; mimeType: ResearchDocument['mediaType']; buffer: Buffer }): Promise<CaseMaterial> {
     const fingerprint = createHash('sha256').update(input.buffer).digest('hex');
     const storageKey = `${fingerprint}${safeExtension(input.originalName, input.kind)}`;
-    await mkdir(this.materialsDirectory, { recursive: true });
+    await mkdir(this.materialsDirectory, { recursive: true, mode: 0o700 });
+    await chmod(this.materialsDirectory, 0o700);
     try {
       await writeFile(path.join(this.materialsDirectory, storageKey), input.buffer, { flag: 'wx', mode: 0o600 });
     } catch (error) {

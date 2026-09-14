@@ -11,6 +11,7 @@ import { CaseMaterialStore } from './storage/caseMaterialStore.js';
 import { DocumentExtractionError, extractResearchDocument, maximumResearchFileBytes } from './research/documentExtractor.js';
 import { GoogleContactsService } from './google/googleContactsService.js';
 import { registerGoogleContactsRoutes } from './google/googleContactsRoutes.js';
+import { applyLocalSecurityHeaders, requireLocalRequest } from './security/localRequestGuard.js';
 
 const researchRequestSchema = z.object({
   caseId: z.string().min(1),
@@ -51,6 +52,9 @@ const materialResearchRequestSchema = researchRequestSchema.extend({
 
 export function createApp(options: { store: CaseStore; materialStore?: CaseMaterialStore; mcpSettingsStore?: McpSettingsStore; googleContactsService?: GoogleContactsService }) {
   const app = express();
+  app.disable('x-powered-by');
+  app.use(applyLocalSecurityHeaders);
+  app.use(requireLocalRequest);
   const mcpSettingsStore = options.mcpSettingsStore ?? new McpSettingsStore();
   const materialStore = options.materialStore ?? new CaseMaterialStore();
   const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maximumResearchFileBytes, files: 1, fields: 4 } });

@@ -2,13 +2,20 @@
   "name": "detective-ai",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c yellow,cyan \"tsx watch src/server/index.ts\" \"vite\"",
     "build": "tsc -p tsconfig.server.json && vite build",
     "start": "node dist-server/server/index.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "security:secrets": "node scripts/check-secrets.mjs",
+    "security:audit": "npm audit --audit-level=high",
+    "version:check": "node scripts/check-version.mjs",
+    "verify": "npm run security:secrets && npm run security:audit && npm run version:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@xyflow/react": "^12.8.6",
@@ -34,7 +41,7 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.4",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.0"
   },
   "overrides": {
     "exceljs": {

@@ -182,6 +182,36 @@ export interface CaseMaterial {
 
 export type ResearchRunStatus = 'running' | 'completed' | 'error';
 
+export type ResearchSourceChannelKind = 'web_search' | 'mcp' | 'file';
+export type ResearchSourceCoverageStatus = 'pending' | 'completed' | 'failed';
+
+export interface ResearchSourceCoverage {
+  channelId: string;
+  channelName: string;
+  kind: ResearchSourceChannelKind;
+  required: boolean;
+  status: ResearchSourceCoverageStatus;
+  attempts: number;
+  message: string;
+}
+
+export type ResearchActivityKind = 'query' | 'mcp_call' | 'source';
+export type ResearchActivityStatus = 'running' | 'completed' | 'failed';
+
+export interface ResearchActivity {
+  id: string;
+  kind: ResearchActivityKind;
+  channelId: string;
+  channelName: string;
+  status: ResearchActivityStatus;
+  startedAt: string;
+  finishedAt?: string;
+  query?: string;
+  url?: string;
+  tool?: string;
+  message?: string;
+}
+
 export interface ResearchRun {
   id: string;
   mode: ResearchMode;
@@ -194,6 +224,8 @@ export interface ResearchRun {
   inputMaterials: Array<{ materialId: string; revision: number; fingerprint: string }>;
   checkedUrls: string[];
   attemptedQueries: string[];
+  sourceCoverage?: ResearchSourceCoverage[];
+  activity?: ResearchActivity[];
   nextSteps: string[];
   addedEntityIds: string[];
   addedRelationIds: string[];
@@ -307,6 +339,8 @@ export interface ResearchResult {
   sources: SourceReference[];
   warnings: string[];
   questionResolution?: QuestionResolutionProposal | null;
+  sourceCoverage?: ResearchSourceCoverage[];
+  activity?: ResearchActivity[];
 }
 
 export interface CodexStatus {
@@ -388,5 +422,7 @@ export interface ResearchDocument {
 
 export type ResearchStreamEvent =
   | { type: 'status'; stage: string; message: string }
+  | { type: 'activity'; activity: ResearchActivity }
+  | { type: 'coverage'; coverage: ResearchSourceCoverage }
   | { type: 'result'; result: ResearchResult }
   | { type: 'error'; message: string };

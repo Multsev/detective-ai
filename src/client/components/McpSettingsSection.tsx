@@ -47,7 +47,7 @@ export function McpSettingsSection({ open, onToggle }: McpSettingsSectionProps) 
     onToggle={onToggle}
     className="mcp-settings-section"
   >
-    <div className="mcp-section-toolbar"><p>Включённые серверы передаются только текущему процессу Codex.</p><Button variant="primary" disabled={!settings || saving} onClick={save}><Save size={12} />{saving ? 'Сохраняем…' : 'Сохранить'}</Button></div>
+    <div className="mcp-section-toolbar"><p>Каждый включённый сервер обязателен и автоматически подтверждается для текущего исследования. Включайте только доверенные MCP; если сервер не ответит, запуск будет отмечен ошибкой.</p><Button variant="primary" disabled={!settings || saving} onClick={save}><Save size={12} />{saving ? 'Сохраняем…' : 'Сохранить'}</Button></div>
     {message && <div className="mcp-message">{message}</div>}
     {!settings ? <div className="mcp-loading"><RefreshCw size={13} className="spin" /> Загружаем…</div> : <div className="mcp-server-list">
       {settings.servers.map((server) => {

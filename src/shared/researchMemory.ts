@@ -6,7 +6,12 @@ export function normalizeResearchMemory(investigationCase: InvestigationCase): I
     ...investigationCase,
     materials: Array.isArray(investigationCase.materials) ? investigationCase.materials : [],
     sources: investigationCase.sources.map(normalizeSourceFreshness),
-    researchRuns: Array.isArray(investigationCase.researchRuns) ? investigationCase.researchRuns.map((run) => ({ ...run, changeIds: Array.isArray(run.changeIds) ? run.changeIds : [] })) : [],
+    researchRuns: Array.isArray(investigationCase.researchRuns) ? investigationCase.researchRuns.map((run) => ({
+      ...run,
+      changeIds: Array.isArray(run.changeIds) ? run.changeIds : [],
+      sourceCoverage: Array.isArray(run.sourceCoverage) ? run.sourceCoverage : [],
+      activity: Array.isArray(run.activity) ? run.activity : [],
+    })) : [],
     changes: Array.isArray(investigationCase.changes) ? investigationCase.changes : [],
   };
 }

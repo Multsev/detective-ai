@@ -33,8 +33,8 @@ process.stdin.on('end', () => {
   fs.writeFileSync(${JSON.stringify(promptCapture)}, prompt);
   console.log(JSON.stringify({type:'thread.started',thread_id:'test'}));
   console.log(JSON.stringify({type:'turn.started'}));
-  console.log(JSON.stringify({type:'item.started',item:{type:'web_search',query:'public source'}}));
-  console.log(JSON.stringify({type:'item.completed',item:{type:'web_search'}}));
+  console.log(JSON.stringify({type:'item.started',item:{id:'web-1',type:'web_search',query:'public source'}}));
+  console.log(JSON.stringify({type:'item.completed',item:{id:'web-1',type:'web_search',query:'public source',status:'completed'}}));
   console.log(JSON.stringify({type:'turn.completed'}));
   fs.writeFileSync(args[outputIndex + 1], JSON.stringify(${JSON.stringify(fakeResult)}));
 });
@@ -110,6 +110,8 @@ process.stdin.on('end', () => {
   it('builds isolated Codex overrides for enabled MCP servers', () => {
     const args = buildMcpConfigArgs([{ id: 'wiki', name: 'Wiki', description: '', enabled: true, transport: 'stdio', command: 'npx', args: ['-y', 'wiki@1.0.0'], url: '', bearerTokenEnvVar: '', envVars: ['WIKI_TOKEN'], requiredEnvVars: [], sourceUrl: '', caution: '', preset: false }]);
     expect(args).toContain('mcp_servers.wiki.command="npx"');
+    expect(args).toContain('mcp_servers.wiki.required=true');
+    expect(args).toContain('mcp_servers.wiki.default_tools_approval_mode="approve"');
     expect(args).toContain('mcp_servers.wiki.args=["-y","wiki@1.0.0"]');
     expect(args).toContain('mcp_servers.wiki.env_vars=["WIKI_TOKEN"]');
   });

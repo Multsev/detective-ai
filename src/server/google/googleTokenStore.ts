@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { userInfo } from 'node:os';
 import path from 'node:path';
@@ -31,10 +31,12 @@ class FileGoogleTokenStore {
 
   async save(tokens: GoogleTokens) {
     const parsed = googleTokenSchema.parse(tokens);
-    await mkdir(path.dirname(this.filePath), { recursive: true });
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    await chmod(path.dirname(this.filePath), 0o700);
     const temporaryPath = `${this.filePath}.tmp`;
     await writeFile(temporaryPath, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
     await rename(temporaryPath, this.filePath);
+    await chmod(this.filePath, 0o600);
     return parsed;
   }
 

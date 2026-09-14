@@ -15,7 +15,9 @@ import type {
   InvestigationCase,
   InvestigationEntity,
   InvestigationRelation,
+  ResearchActivity,
   ResearchRun,
+  ResearchSourceCoverage,
   ResearchStreamEvent,
 } from '../shared/domain';
 import { entityTypes, evidenceStatuses, questionStatuses, type QuestionStatus } from '../shared/domain';
@@ -544,6 +546,8 @@ export function App() {
       inputMaterials: pendingMaterials.map((material) => ({ materialId: material.id, revision: material.revision, fingerprint: material.fingerprint })),
       checkedUrls: [],
       attemptedQueries: includeWeb ? [normalizedQuestion] : [],
+      sourceCoverage: [],
+      activity: [],
       nextSteps: [],
       addedEntityIds: [],
       addedRelationIds: [],
@@ -563,6 +567,8 @@ export function App() {
     const checkedUrls = new Set<string>();
     const nextSteps = new Set<string>();
     const changeIds = new Set<string>();
+    const activityById = new Map<string, ResearchActivity>();
+    const coverageById = new Map<string, ResearchSourceCoverage>();
     const summaries: string[] = [];
     let activeMaterialId: string | undefined;
     try {
@@ -577,10 +583,20 @@ export function App() {
         let streamedResult: EntityResearchState['result'];
         const onEvent = (event: ResearchStreamEvent) => {
           if (event.type === 'status') setResearchByEntityId((current) => ({ ...current, [focusEntityId]: { ...(current[focusEntityId] ?? initialResearch), stage: event.stage, message: event.message, fileName: material?.name } }));
+          if (event.type === 'activity') activityById.set(event.activity.id, event.activity);
+          if (event.type === 'coverage') {
+            const channelId = event.coverage.channelId === 'file' && material ? `file:${material.id}` : event.coverage.channelId;
+            coverageById.set(channelId, channelId === event.coverage.channelId ? event.coverage : { ...event.coverage, channelId, channelName: material?.name ?? event.coverage.channelName });
+          }
           if (event.type === 'result') streamedResult = event.result;
         };
         await start(onEvent);
         if (!streamedResult) throw new Error('Codex завершил работу без графа предложений.');
+        for (const activity of streamedResult.activity ?? []) activityById.set(activity.id, activity);
+        for (const coverage of streamedResult.sourceCoverage ?? []) {
+          const channelId = coverage.channelId === 'file' && material ? `file:${material.id}` : coverage.channelId;
+          coverageById.set(channelId, channelId === coverage.channelId ? coverage : { ...coverage, channelId, channelName: material?.name ?? coverage.channelName });
+        }
         const latestCase = investigationCaseRef.current ?? investigationCase;
         const currentFocus = latestCase.entities.find((entity) => entity.id === focusEntityId) ?? focusEntity;
         const previousEntityIds = new Set(latestCase.entities.map((entity) => entity.id));
@@ -590,6 +606,7 @@ export function App() {
         outcome.investigationCase.entities.filter((entity) => !previousEntityIds.has(entity.id)).forEach((entity) => addedEntityIds.add(entity.id));
         outcome.investigationCase.relations.filter((relation) => !previousRelationIds.has(relation.id)).forEach((relation) => addedRelationIds.add(relation.id));
         outcome.result.sources.map((source) => source.url).filter((url) => /^https?:\/\//.test(url)).forEach((url) => checkedUrls.add(url));
+        (outcome.result.activity ?? []).map((activity) => activity.url).filter((url): url is string => Boolean(url && /^https?:\/\//.test(url))).forEach((url) => checkedUrls.add(url));
         outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url).filter((url): url is string => Boolean(url && /^https?:\/\//.test(url))).forEach((url) => checkedUrls.add(url));
         outcome.result.questions.forEach((item) => nextSteps.add(item.text));
         if (outcome.result.summary && !summaries.includes(outcome.result.summary)) summaries.push(outcome.result.summary);
@@ -637,6 +654,9 @@ export function App() {
         status: 'completed' as const,
         finishedAt,
         checkedUrls: [...checkedUrls],
+        attemptedQueries: [...new Set([normalizedQuestion, ...[...activityById.values()].map((activity) => activity.query).filter((query): query is string => Boolean(query))])],
+        sourceCoverage: [...coverageById.values()],
+        activity: [...activityById.values()],
         nextSteps: [...nextSteps],
         addedEntityIds: [...addedEntityIds],
         addedRelationIds: [...addedRelationIds],
@@ -658,7 +678,16 @@ export function App() {
       const failedCase = recordResearchRunOutcome({
         ...latestCase,
         materials: (latestCase.materials ?? []).map((material) => activeMaterialId === material.id ? { ...material, status: 'error' as const, updatedAt: failedAt, errorMessage } : material.status === 'processing' && pendingMaterials.some((candidate) => candidate.id === material.id) ? { ...material, status: 'pending' as const, updatedAt: failedAt } : material),
-        researchRuns: (latestCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: summaries.at(-1) ?? '' } : candidate),
+        researchRuns: (latestCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
+          ...candidate,
+          status: 'error' as const,
+          finishedAt: failedAt,
+          errorMessage,
+          attemptedQueries: [...new Set([normalizedQuestion, ...[...activityById.values()].map((activity) => activity.query).filter((query): query is string => Boolean(query))])],
+          sourceCoverage: [...coverageById.values()],
+          activity: [...activityById.values()],
+          summary: summaries.at(-1) ?? '',
+        } : candidate),
       }, runId, 'error', errorMessage, failedAt);
       try { await persistResearchCase(failedCase); } catch { /* Основная ошибка исследования важнее ошибки фиксации статуса. */ }
       showEntityMotion([focusEntityId], 'error');
@@ -715,8 +744,10 @@ export function App() {
     setMessage(undefined);
     const run: ResearchRun = {
       id: runId, mode: 'relationships', entityIds: uniqueEntityIds, question: normalizedQuestion, includeWeb: true, status: 'running', startedAt,
-      inputMaterials: [], checkedUrls: [], attemptedQueries: [normalizedQuestion], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '',
+      inputMaterials: [], checkedUrls: [], attemptedQueries: [normalizedQuestion], sourceCoverage: [], activity: [], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '',
     };
+    const activityById = new Map<string, ResearchActivity>();
+    const coverageById = new Map<string, ResearchSourceCoverage>();
     try {
       await persistResearchCase({ ...(investigationCaseRef.current ?? investigationCase), researchRuns: [...((investigationCaseRef.current ?? investigationCase).researchRuns ?? []), run].slice(-100) });
       let streamedResult: EntityResearchState['result'];
@@ -728,6 +759,8 @@ export function App() {
             return next;
           });
         }
+        if (event.type === 'activity') activityById.set(event.activity.id, event.activity);
+        if (event.type === 'coverage') coverageById.set(event.coverage.channelId, event.coverage);
         if (event.type === 'result') streamedResult = event.result;
       };
       await api.researchRelationshipsStream(investigationCase.id, uniqueEntityIds, normalizedQuestion, onEvent);
@@ -742,7 +775,10 @@ export function App() {
         ...outcome.investigationCase,
         researchRuns: (outcome.investigationCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
           ...candidate, status: 'completed' as const, finishedAt,
-          checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)),
+          checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...(outcome.result.activity ?? []).map((activity) => activity.url ?? ''), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)),
+          attemptedQueries: [...new Set([normalizedQuestion, ...(outcome.result.activity ?? []).map((activity) => activity.query).filter((query): query is string => Boolean(query))])],
+          sourceCoverage: outcome.result.sourceCoverage ?? [],
+          activity: outcome.result.activity ?? [],
           nextSteps: outcome.result.questions.map((item) => item.text),
           addedEntityIds: outcome.investigationCase.entities.filter((entity) => !previousEntityIds.has(entity.id)).map((entity) => entity.id),
           addedRelationIds: outcome.investigationCase.relations.filter((relation) => !previousRelationIds.has(relation.id)).map((relation) => relation.id),
@@ -768,7 +804,7 @@ export function App() {
       const failedAt = new Date().toISOString();
       const latest = investigationCaseRef.current ?? investigationCase;
       try {
-        const failedCase = { ...latest, researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, summary: '' } : candidate) };
+        const failedCase = { ...latest, researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, attemptedQueries: [...new Set([normalizedQuestion, ...[...activityById.values()].map((activity) => activity.query).filter((query): query is string => Boolean(query))])], sourceCoverage: [...coverageById.values()], activity: [...activityById.values()], summary: '' } : candidate) };
         await persistResearchCase(recordResearchRunOutcome(failedCase, runId, 'error', errorMessage, failedAt));
       } catch { /* Основная ошибка важнее фиксации статуса. */ }
       showEntityMotion(uniqueEntityIds, 'error');
@@ -792,8 +828,10 @@ export function App() {
     const startedAt = new Date().toISOString();
     const run: ResearchRun = {
       id: runId, mode: 'question_resolution', entityIds: [questionId, ...details.aboutEntityIds], question: questionEntity.title,
-      includeWeb: true, status: 'running', startedAt, inputMaterials: [], checkedUrls: [], attemptedQueries: [questionEntity.title], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '',
+      includeWeb: true, status: 'running', startedAt, inputMaterials: [], checkedUrls: [], attemptedQueries: [questionEntity.title], sourceCoverage: [], activity: [], nextSteps: [], addedEntityIds: [], addedRelationIds: [], changeIds: [], summary: '',
     };
+    const activityById = new Map<string, ResearchActivity>();
+    const coverageById = new Map<string, ResearchSourceCoverage>();
     const state: EntityResearchState = { entityId: questionId, mode: 'question_resolution', entityIds: run.entityIds, status: 'running', stage: 'starting', message: 'Проверяю вопрос и критерий ответа.', question: questionEntity.title, startedAt, source: 'web' };
     setResearchByEntityId((current) => ({ ...current, [questionId]: state }));
     setEntityMenu(undefined);
@@ -806,6 +844,8 @@ export function App() {
       let streamedResult: EntityResearchState['result'];
       await api.researchQuestionStream(currentCase.id, questionId, '', (event) => {
         if (event.type === 'status') setResearchByEntityId((current) => ({ ...current, [questionId]: { ...(current[questionId] ?? state), stage: event.stage, message: event.message } }));
+        if (event.type === 'activity') activityById.set(event.activity.id, event.activity);
+        if (event.type === 'coverage') coverageById.set(event.coverage.channelId, event.coverage);
         if (event.type === 'result') streamedResult = event.result;
       });
       if (!streamedResult) throw new Error('Codex завершил работу без результата вопроса.');
@@ -820,7 +860,18 @@ export function App() {
       const saved = {
         ...outcome.investigationCase,
         researchRuns: (outcome.investigationCase.researchRuns ?? []).map((candidate) => candidate.id === runId ? {
-          ...candidate, status: 'completed' as const, finishedAt, checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)), nextSteps: outcome.result.questions.map((item) => item.text), addedEntityIds, addedRelationIds, changeIds: outcome.changes.map((change) => change.id), summary: outcome.question.status === 'answered' ? (outcome.result.summary || 'Вопрос разрешён.') : outcome.question.status === 'partial' ? (outcome.result.summary || 'Найден частичный ответ.') : 'Проверяемого ответа пока нет. Новые карточки и связи не созданы.',
+          ...candidate,
+          status: 'completed' as const,
+          finishedAt,
+          checkedUrls: [...new Set([...outcome.result.sources.map((source) => source.url), ...(outcome.result.activity ?? []).map((activity) => activity.url ?? ''), ...outcome.changes.filter((change) => change.targetType === 'source').map((change) => outcome.investigationCase.sources.find((source) => source.id === change.targetId)?.url ?? '')])].filter((url) => /^https?:\/\//.test(url)),
+          attemptedQueries: [...new Set([questionEntity.title, ...(outcome.result.activity ?? []).map((activity) => activity.query).filter((query): query is string => Boolean(query))])],
+          sourceCoverage: outcome.result.sourceCoverage ?? [],
+          activity: outcome.result.activity ?? [],
+          nextSteps: outcome.result.questions.map((item) => item.text),
+          addedEntityIds,
+          addedRelationIds,
+          changeIds: outcome.changes.map((change) => change.id),
+          summary: outcome.question.status === 'answered' ? (outcome.result.summary || 'Вопрос разрешён.') : outcome.question.status === 'partial' ? (outcome.result.summary || 'Найден частичный ответ.') : 'Проверяемого ответа пока нет. Новые карточки и связи не созданы.',
         } : candidate),
       };
       const savedRun = saved.researchRuns?.find((candidate) => candidate.id === runId);
@@ -837,7 +888,7 @@ export function App() {
         const failedCase = {
         ...latest,
         entities: latest.entities.map((entity) => entity.id === questionId ? { ...entity, question: { ...(getQuestionDetails(entity, latest) ?? details), status: details.status } } : entity),
-        researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, summary: errorMessage } : candidate),
+        researchRuns: (latest.researchRuns ?? []).map((candidate) => candidate.id === runId ? { ...candidate, status: 'error' as const, finishedAt: failedAt, errorMessage, attemptedQueries: [...new Set([questionEntity.title, ...[...activityById.values()].map((activity) => activity.query).filter((query): query is string => Boolean(query))])], sourceCoverage: [...coverageById.values()], activity: [...activityById.values()], summary: errorMessage } : candidate),
         };
         await persistResearchCase(recordResearchRunOutcome(failedCase, runId, 'error', errorMessage, failedAt));
       } catch { /* Сохраняем исходную ошибку. */ }

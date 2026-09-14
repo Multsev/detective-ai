@@ -33,7 +33,8 @@ describe('CaseStore', () => {
     expect(secondCase.researchSubjectEntityId).toBe(secondCase.entities[0].id);
     expect(thirdCase.id).toBe('case-0003-ooo-vektor');
     expect((await store.list()).map((item) => item.caseNumber)).toEqual([1, 2, 3]);
-    await expect(stat(path.join(dataDirectory, 'cases', `${secondCase.id}.json`))).resolves.toBeDefined();
+    expect((await stat(path.join(dataDirectory, 'cases'))).mode & 0o777).toBe(0o700);
+    expect((await stat(path.join(dataDirectory, 'cases', `${secondCase.id}.json`))).mode & 0o777).toBe(0o600);
     await expect(stat(path.join(dataDirectory, 'cases', `${thirdCase.id}.json`))).resolves.toBeDefined();
   });
 

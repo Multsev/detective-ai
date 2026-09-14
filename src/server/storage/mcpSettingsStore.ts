@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
 import { z } from 'zod';
@@ -89,10 +89,12 @@ export class McpSettingsStore {
 
   async save(input: McpSettings): Promise<McpSettings> {
     const parsed = settingsSchema.parse({ ...input, servers: input.servers.filter((server) => !removedServerIds.has(server.id)), updatedAt: new Date().toISOString() });
-    await mkdir(path.dirname(this.filePath), { recursive: true });
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    await chmod(path.dirname(this.filePath), 0o700);
     const temporaryPath = `${this.filePath}.tmp`;
     await writeFile(temporaryPath, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
     await rename(temporaryPath, this.filePath);
+    await chmod(this.filePath, 0o600);
     return parsed;
   }
 

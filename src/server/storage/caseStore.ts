@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CaseSummary, CreateCaseInput, InvestigationCase, InvestigationEntity } from '../../shared/domain.js';
 import { createSeedCase } from '../../shared/seed.js';
@@ -135,7 +135,7 @@ export class CaseStore {
 
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
-    await mkdir(this.casesDirectory, { recursive: true });
+    await this.ensurePrivateCasesDirectory();
     const existingFiles = (await readdir(this.casesDirectory)).filter((fileName) => fileName.endsWith('.json'));
     if (existingFiles.length === 0) {
       let initialCase: InvestigationCase;
@@ -159,11 +159,17 @@ export class CaseStore {
 
   private async writeCase(investigationCase: InvestigationCase): Promise<InvestigationCase> {
     const savedCase = { ...normalizeMaterialFileNames(normalizeCaseQuestions(normalizeResearchMemory(normalizeCaseSubject(investigationCase)))), updatedAt: new Date().toISOString() };
-    await mkdir(this.casesDirectory, { recursive: true });
+    await this.ensurePrivateCasesDirectory();
     const targetPath = this.filePath(savedCase.id);
     const temporaryPath = `${targetPath}.tmp`;
-    await writeFile(temporaryPath, `${JSON.stringify(savedCase, null, 2)}\n`, 'utf8');
+    await writeFile(temporaryPath, `${JSON.stringify(savedCase, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
     await rename(temporaryPath, targetPath);
+    await chmod(targetPath, 0o600);
     return savedCase;
+  }
+
+  private async ensurePrivateCasesDirectory(): Promise<void> {
+    await mkdir(this.casesDirectory, { recursive: true, mode: 0o700 });
+    await chmod(this.casesDirectory, 0o700);
   }
 }
